@@ -59,6 +59,11 @@ namespace KHSX.ViewModels
                     var dayCell = new DayCell(date);
                     // Update deadline status
                     dayCell.IsDeadline = date.Date == DeadlineDate.Date;
+                    dayCell.HasCustomConfig = false; // Dùng cấu hình mặc định
+                    dayCell.ShiftA.Workers = line.DefaultShiftA.Workers;
+                    dayCell.ShiftA.Minutes = line.DefaultShiftA.Minutes;
+                    dayCell.ShiftB.Workers = line.DefaultShiftB.Workers;
+                    dayCell.ShiftB.Minutes = line.DefaultShiftB.Minutes;
                     line.Days.Add(dayCell);
                 }
                 
@@ -151,12 +156,17 @@ namespace KHSX.ViewModels
             var newLineName = $"Line {Lines.Count + 1}";
             var line = new ProductionLine(newLineName);
             
-            // Add 30 days from start date
+            // Add 30 days from start date with default shift config
             for (int d = 0; d < 30; d++)
             {
                 var date = StartDate.AddDays(d);
                 var dayCell = new DayCell(date);
                 dayCell.IsDeadline = date.Date == DeadlineDate.Date;
+                dayCell.HasCustomConfig = false; // Dùng cấu hình mặc định
+                dayCell.ShiftA.Workers = line.DefaultShiftA.Workers;
+                dayCell.ShiftA.Minutes = line.DefaultShiftA.Minutes;
+                dayCell.ShiftB.Workers = line.DefaultShiftB.Workers;
+                dayCell.ShiftB.Minutes = line.DefaultShiftB.Minutes;
                 line.Days.Add(dayCell);
             }
             

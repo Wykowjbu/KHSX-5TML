@@ -23,19 +23,22 @@ namespace KHSX.Services
         public class LineConfig
         {
             public string LineName { get; set; }
+            public ShiftData DefaultShiftA { get; set; } = new();
+            public ShiftData DefaultShiftB { get; set; } = new();
             public List<DayCellConfig> Days { get; set; } = new();
         }
 
         public class DayCellConfig
         {
             public DateTime Date { get; set; }
+            public bool HasCustomConfig { get; set; }
             public ShiftData ShiftA { get; set; } = new();
             public ShiftData ShiftB { get; set; } = new();
         }
 
         public class ShiftData
         {
-            public int Workers { get; set; }
+            public double Workers { get; set; }
             public double Minutes { get; set; }
         }
 
@@ -48,9 +51,20 @@ namespace KHSX.Services
                 Lines = lines.Select(line => new LineConfig
                 {
                     LineName = line.LineName,
+                    DefaultShiftA = new ShiftData
+                    {
+                        Workers = line.DefaultShiftA.Workers,
+                        Minutes = line.DefaultShiftA.Minutes
+                    },
+                    DefaultShiftB = new ShiftData
+                    {
+                        Workers = line.DefaultShiftB.Workers,
+                        Minutes = line.DefaultShiftB.Minutes
+                    },
                     Days = line.Days.Select(day => new DayCellConfig
                     {
                         Date = day.Date,
+                        HasCustomConfig = day.HasCustomConfig,
                         ShiftA = new ShiftData
                         {
                             Workers = day.ShiftA.Workers,
@@ -110,10 +124,15 @@ namespace KHSX.Services
             foreach (var lineConfig in config.Lines)
             {
                 var line = new ProductionLine(lineConfig.LineName);
+                line.DefaultShiftA.Workers = lineConfig.DefaultShiftA.Workers;
+                line.DefaultShiftA.Minutes = lineConfig.DefaultShiftA.Minutes;
+                line.DefaultShiftB.Workers = lineConfig.DefaultShiftB.Workers;
+                line.DefaultShiftB.Minutes = lineConfig.DefaultShiftB.Minutes;
                 
                 foreach (var dayConfig in lineConfig.Days)
                 {
                     var day = new DayCell(dayConfig.Date);
+                    day.HasCustomConfig = dayConfig.HasCustomConfig;
                     day.ShiftA.Workers = dayConfig.ShiftA.Workers;
                     day.ShiftA.Minutes = dayConfig.ShiftA.Minutes;
                     day.ShiftB.Workers = dayConfig.ShiftB.Workers;

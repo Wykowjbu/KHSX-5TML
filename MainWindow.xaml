@@ -19,6 +19,8 @@
         <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <local:WeekendColorConverter x:Key="WeekendColorConverter"/>
         <local:InverseBoolConverter x:Key="InverseBoolConverter"/>
+        <local:CustomConfigBackgroundConverter x:Key="CustomConfigBackgroundConverter"/>
+        <local:DayCellBackgroundConverter x:Key="DayCellBackgroundConverter"/>
         
         <!-- Then define DataTemplate that uses them -->
         <DataTemplate DataType="{x:Type models:ProductBlock}">
@@ -91,7 +93,8 @@
                                 </Grid.ColumnDefinitions>
 
                                 <!-- Line Name -->
-                                <Border Background="#ddd" BorderBrush="#aaa" BorderThickness="1" Padding="5">
+                                <Border Background="#ddd" BorderBrush="#aaa" BorderThickness="1" Padding="5"
+                                        Tag="{Binding}">
                                     <Grid>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="*"/>
@@ -103,7 +106,7 @@
                                                    FontWeight="Bold" 
                                                    MouseLeftButtonDown="LineName_DoubleClick"
                                                    Cursor="Hand"
-                                                   ToolTip="Double-click để đổi tên"/>
+                                                   ToolTip="Click để đổi tên và cấu hình ca"/>
                                         
                                         <Button Grid.Row="1" Content="🗑️" 
                                                 Command="{Binding DataContext.RemoveLineCommand, RelativeSource={RelativeSource AncestorType=Window}}"
@@ -126,11 +129,16 @@
                                         <DataTemplate DataType="{x:Type models:DayCell}">
                                             <Border Width="120" Height="100" 
                                                     BorderBrush="#aaa" BorderThickness="1" 
-                                                    Background="{Binding IsWeekend, Converter={StaticResource WeekendColorConverter}}"
                                                     AllowDrop="{Binding IsWeekend, Converter={StaticResource InverseBoolConverter}}"
                                                     Drop="DayCell_Drop" DragEnter="DayCell_DragEnter"
                                                     MouseRightButtonUp="DayCell_RightClick"
                                                     Tag="{Binding}">
+                                                <Border.Background>
+                                                    <MultiBinding Converter="{StaticResource DayCellBackgroundConverter}">
+                                                        <Binding Path="IsWeekend"/>
+                                                        <Binding Path="HasCustomConfig"/>
+                                                    </MultiBinding>
+                                                </Border.Background>
                                                 
                                                 <Grid>
                                                     <Grid.RowDefinitions>

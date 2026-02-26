@@ -19,6 +19,9 @@ namespace KHSX.Models
         private bool isDeadline;
 
         [ObservableProperty]
+        private bool hasCustomConfig = false; // Đánh dấu cell này có cấu hình riêng hay dùng mặc định của line
+
+        [ObservableProperty]
         private ShiftConfig shiftA = new ShiftConfig { Workers = 1, Minutes = 480 };
 
         [ObservableProperty]
@@ -70,8 +73,8 @@ namespace KHSX.Models
         public double AvailableMinutes => TotalCapacity - TotalUsed;
 
         public string WatermarkText => IsWeekend ? "Nghỉ" : 
-            $"A:{ShiftA.Workers}per({ShiftA.Minutes})\n" +
-            $"B:{ShiftB.Workers}per({ShiftB.Minutes})\n" +
-            $"Total: {Math.Round(TotalCapacity)}";
+            $"A:{ShiftA.Workers:0.##}per({ShiftA.Minutes:0.##}){(HasCustomConfig ? "*" : "")}\n" +
+            $"B:{ShiftB.Workers:0.##}per({ShiftB.Minutes:0.##}){(HasCustomConfig ? "*" : "")}\n" +
+            $"Total: {TotalCapacity:0.#}";
     }
 }

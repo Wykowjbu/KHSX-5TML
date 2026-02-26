@@ -71,8 +71,235 @@ namespace KHSX
         {
             if (sender is TextBlock textBlock && textBlock.DataContext is ProductionLine line)
             {
-                ShowEditLineNameDialog(line);
+                ShowEditLineDialog(line);
             }
+        }
+
+        private void LineName_RightClick(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is Border border && border.Tag is ProductionLine line)
+            {
+                ShowEditLineConfigDialog(line);
+            }
+        }
+
+        private void ShowEditLineDialog(ProductionLine line)
+        {
+            var dialog = new Window
+            {
+                Title = $"Cấu hình {line.LineName}",
+                Width = 500,
+                Height = 450,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize
+            };
+
+            var mainPanel = new StackPanel { Margin = new Thickness(20) };
+
+            // Line name section
+            var nameTitle = new TextBlock
+            {
+                Text = "TÊN LINE",
+                FontWeight = FontWeights.Bold,
+                FontSize = 14,
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+            mainPanel.Children.Add(nameTitle);
+
+            var namePanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 20) };
+            namePanel.Children.Add(new TextBlock { Text = "Tên:", Width = 100, VerticalAlignment = VerticalAlignment.Center });
+            var nameBox = new TextBox
+            {
+                Width = 300,
+                Text = line.LineName,
+                FontSize = 14
+            };
+            namePanel.Children.Add(nameBox);
+            mainPanel.Children.Add(namePanel);
+
+            // Info text
+            var infoText = new TextBlock
+            {
+                Text = "CẤU HÌNH MẶC ĐỊNH CHO TẤT CẢ CÁC NGÀY TRONG LINE",
+                FontWeight = FontWeights.Bold,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = Brushes.DarkBlue,
+                Margin = new Thickness(0, 0, 0, 15),
+                FontSize = 12
+            };
+            mainPanel.Children.Add(infoText);
+
+            // Shift A
+            var shiftAPanel = CreateShiftPanel("Ca A (Mặc định)", line.DefaultShiftA);
+            mainPanel.Children.Add(shiftAPanel);
+            mainPanel.Children.Add(new Separator { Margin = new Thickness(0, 15, 0, 15) });
+
+            // Shift B
+            var shiftBPanel = CreateShiftPanel("Ca B (Mặc định)", line.DefaultShiftB);
+            mainPanel.Children.Add(shiftBPanel);
+            mainPanel.Children.Add(new Separator { Margin = new Thickness(0, 15, 0, 15) });
+
+            // Buttons
+            var buttonPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
+
+            var applyButton = new Button
+            {
+                Content = "Áp dụng cho tất cả ngày",
+                Width = 140,
+                Height = 30,
+                Margin = new Thickness(0, 0, 10, 0),
+                Background = new SolidColorBrush(Color.FromRgb(33, 150, 243)),
+                Foreground = Brushes.White
+            };
+            applyButton.Click += (s, e) =>
+            {
+                if (!string.IsNullOrWhiteSpace(nameBox.Text))
+                {
+                    line.LineName = nameBox.Text;
+                    line.ApplyDefaultShiftToAllDays();
+                    var vm = this.DataContext as MainViewModel;
+                    vm?.SaveConfigurationCommand.Execute(null);
+                    MessageBox.Show($"Đã áp dụng cấu hình cho tất cả ngày trong {line.LineName}", "Thành công", MessageBoxButton.OK, MessageBoxImage.Information);
+                    dialog.DialogResult = true;
+                }
+                else
+                {
+                    MessageBox.Show("Tên line không được để trống!", "Lỗi", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            };
+
+            var saveButton = new Button
+            {
+                Content = "Lưu",
+                Width = 80,
+                Height = 30,
+                Margin = new Thickness(0, 0, 10, 0)
+            };
+            saveButton.Click += (s, e) =>
+            {
+                if (!string.IsNullOrWhiteSpace(nameBox.Text))
+                {
+                    line.LineName = nameBox.Text;
+                    var vm = this.DataContext as MainViewModel;
+                    vm?.SaveConfigurationCommand.Execute(null);
+                    dialog.DialogResult = true;
+                }
+                else
+                {
+                    MessageBox.Show("Tên line không được để trống!", "Lỗi", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            };
+
+            var cancelButton = new Button
+            {
+                Content = "Hủy",
+                Width = 80,
+                Height = 30
+            };
+            cancelButton.Click += (s, e) => dialog.DialogResult = false;
+
+            buttonPanel.Children.Add(applyButton);
+            buttonPanel.Children.Add(saveButton);
+            buttonPanel.Children.Add(cancelButton);
+            mainPanel.Children.Add(buttonPanel);
+
+            dialog.Content = mainPanel;
+            nameBox.Focus();
+            nameBox.SelectAll();
+            dialog.ShowDialog();
+        }
+
+        private void ShowEditLineConfigDialog(ProductionLine line)
+        {
+            var dialog = new Window
+            {
+                Title = $"Cấu hình mặc định cho {line.LineName}",
+                Width = 450,
+                Height = 350,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize
+            };
+
+            var mainPanel = new StackPanel { Margin = new Thickness(20) };
+
+            // Info text
+            var infoText = new TextBlock
+            {
+                Text = "Cấu hình này sẽ áp dụng cho TẤT CẢ các ngày trong line (trừ các ngày đã custom riêng)",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = Brushes.DarkBlue,
+                Margin = new Thickness(0, 0, 0, 20),
+                FontStyle = FontStyles.Italic
+            };
+            mainPanel.Children.Add(infoText);
+
+            // Shift A
+            var shiftAPanel = CreateShiftPanel("Ca A (Mặc định)", line.DefaultShiftA);
+            mainPanel.Children.Add(shiftAPanel);
+            mainPanel.Children.Add(new Separator { Margin = new Thickness(0, 15, 0, 15) });
+
+            // Shift B
+            var shiftBPanel = CreateShiftPanel("Ca B (Mặc định)", line.DefaultShiftB);
+            mainPanel.Children.Add(shiftBPanel);
+            mainPanel.Children.Add(new Separator { Margin = new Thickness(0, 15, 0, 15) });
+
+            // Buttons
+            var buttonPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
+
+            var applyButton = new Button
+            {
+                Content = "Áp dụng cho tất cả",
+                Width = 120,
+                Height = 30,
+                Margin = new Thickness(0, 0, 10, 0)
+            };
+            applyButton.Click += (s, e) =>
+            {
+                line.ApplyDefaultShiftToAllDays();
+                var vm = this.DataContext as MainViewModel;
+                vm?.SaveConfigurationCommand.Execute(null);
+                MessageBox.Show($"Đã áp dụng cấu hình cho tất cả ngày trong {line.LineName}", "Thành công", MessageBoxButton.OK, MessageBoxImage.Information);
+            };
+
+            var saveButton = new Button
+            {
+                Content = "Lưu",
+                Width = 80,
+                Height = 30,
+                Margin = new Thickness(0, 0, 10, 0)
+            };
+            saveButton.Click += (s, e) =>
+            {
+                var vm = this.DataContext as MainViewModel;
+                vm?.SaveConfigurationCommand.Execute(null);
+                dialog.DialogResult = true;
+            };
+
+            var cancelButton = new Button
+            {
+                Content = "Hủy",
+                Width = 80,
+                Height = 30
+            };
+            cancelButton.Click += (s, e) => dialog.DialogResult = false;
+
+            buttonPanel.Children.Add(applyButton);
+            buttonPanel.Children.Add(saveButton);
+            buttonPanel.Children.Add(cancelButton);
+            mainPanel.Children.Add(buttonPanel);
+
+            dialog.Content = mainPanel;
+            dialog.ShowDialog();
         }
 
         private void ShowEditLineNameDialog(ProductionLine line)
@@ -154,32 +381,56 @@ namespace KHSX
 
         private void ShowEditShiftDialog(DayCell day)
         {
+            // Tìm line chứa day này
+            ProductionLine parentLine = null;
+            var vm = this.DataContext as MainViewModel;
+            if (vm != null)
+            {
+                foreach (var line in vm.Lines)
+                {
+                    if (line.Days.Contains(day))
+                    {
+                        parentLine = line;
+                        break;
+                    }
+                }
+            }
+
+            if (parentLine == null) return;
+
             var dialog = new Window
             {
                 Title = $"Chỉnh sửa ca làm việc - {day.Date:dd/MM/yyyy}",
-                Width = 400,
-                Height = 300,
+                Width = 450,
+                Height = 400,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 Owner = this,
                 ResizeMode = ResizeMode.NoResize
             };
 
-            var grid = new Grid { Margin = new Thickness(20) };
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(20) });
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(20) });
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var mainPanel = new StackPanel { Margin = new Thickness(20) };
+
+            // Info text
+            var infoText = new TextBlock
+            {
+                Text = $"Chỉnh sửa riêng cho ngày này{(day.HasCustomConfig ? " (đang dùng cấu hình riêng)" : " (đang dùng cấu hình mặc định của line)")}",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = day.HasCustomConfig ? Brushes.Orange : Brushes.DarkGreen,
+                Margin = new Thickness(0, 0, 0, 15),
+                FontStyle = FontStyles.Italic,
+                FontWeight = FontWeights.Bold
+            };
+            mainPanel.Children.Add(infoText);
 
             // Shift A
             var shiftAPanel = CreateShiftPanel("Ca A", day.ShiftA);
-            Grid.SetRow(shiftAPanel, 0);
-            grid.Children.Add(shiftAPanel);
+            mainPanel.Children.Add(shiftAPanel);
+            mainPanel.Children.Add(new Separator { Margin = new Thickness(0, 15, 0, 15) });
 
             // Shift B
             var shiftBPanel = CreateShiftPanel("Ca B", day.ShiftB);
-            Grid.SetRow(shiftBPanel, 2);
-            grid.Children.Add(shiftBPanel);
+            mainPanel.Children.Add(shiftBPanel);
+            mainPanel.Children.Add(new Separator { Margin = new Thickness(0, 15, 0, 15) });
 
             // Buttons
             var buttonPanel = new StackPanel
@@ -187,7 +438,32 @@ namespace KHSX
                 Orientation = Orientation.Horizontal,
                 HorizontalAlignment = HorizontalAlignment.Right
             };
-            Grid.SetRow(buttonPanel, 4);
+
+            // Reset button (only show if has custom config)
+            if (day.HasCustomConfig)
+            {
+                var resetButton = new Button
+                {
+                    Content = "Reset về mặc định",
+                    Width = 120,
+                    Height = 30,
+                    Margin = new Thickness(0, 0, 10, 0),
+                    Background = new SolidColorBrush(Color.FromRgb(255, 152, 0)),
+                    Foreground = Brushes.White
+                };
+                resetButton.Click += (s, e) =>
+                {
+                    day.ShiftA.Workers = parentLine.DefaultShiftA.Workers;
+                    day.ShiftA.Minutes = parentLine.DefaultShiftA.Minutes;
+                    day.ShiftB.Workers = parentLine.DefaultShiftB.Workers;
+                    day.ShiftB.Minutes = parentLine.DefaultShiftB.Minutes;
+                    day.HasCustomConfig = false;
+                    vm?.SaveConfigurationCommand.Execute(null);
+                    MessageBox.Show("Đã reset về cấu hình mặc định của line", "Thành công", MessageBoxButton.OK, MessageBoxImage.Information);
+                    dialog.DialogResult = true;
+                };
+                buttonPanel.Children.Add(resetButton);
+            }
 
             var saveButton = new Button
             {
@@ -198,7 +474,14 @@ namespace KHSX
             };
             saveButton.Click += (s, e) =>
             {
-                var vm = this.DataContext as MainViewModel;
+                // Chỉ đánh dấu custom nếu giá trị KHÁC với default của line
+                bool isDifferent = 
+                    day.ShiftA.Workers != parentLine.DefaultShiftA.Workers ||
+                    day.ShiftA.Minutes != parentLine.DefaultShiftA.Minutes ||
+                    day.ShiftB.Workers != parentLine.DefaultShiftB.Workers ||
+                    day.ShiftB.Minutes != parentLine.DefaultShiftB.Minutes;
+
+                day.HasCustomConfig = isDifferent;
                 vm?.SaveConfigurationCommand.Execute(null);
                 dialog.DialogResult = true;
             };
@@ -213,9 +496,9 @@ namespace KHSX
 
             buttonPanel.Children.Add(saveButton);
             buttonPanel.Children.Add(cancelButton);
-            grid.Children.Add(buttonPanel);
+            mainPanel.Children.Add(buttonPanel);
 
-            dialog.Content = grid;
+            dialog.Content = mainPanel;
             dialog.ShowDialog();
         }
 
@@ -239,14 +522,19 @@ namespace KHSX
             var workersBox = new TextBox
             {
                 Width = 100,
-                Text = shift.Workers.ToString()
+                Text = shift.Workers.ToString("0.##") // Format với tối đa 2 chữ số thập phân
             };
             workersBox.LostFocus += (s, e) =>
             {
-                if (int.TryParse(workersBox.Text, out int value) && value >= 0)
+                if (double.TryParse(workersBox.Text, out double value) && value >= 0)
+                {
                     shift.Workers = value;
+                    workersBox.Text = value.ToString("0.##");
+                }
                 else
-                    workersBox.Text = shift.Workers.ToString(); // Reset nếu không hợp lệ
+                {
+                    workersBox.Text = shift.Workers.ToString("0.##"); // Reset nếu không hợp lệ
+                }
             };
             workersPanel.Children.Add(workersBox);
             panel.Children.Add(workersPanel);
@@ -257,14 +545,19 @@ namespace KHSX
             var minutesBox = new TextBox
             {
                 Width = 100,
-                Text = shift.Minutes.ToString()
+                Text = shift.Minutes.ToString("0.##")
             };
             minutesBox.LostFocus += (s, e) =>
             {
                 if (double.TryParse(minutesBox.Text, out double value) && value >= 0)
+                {
                     shift.Minutes = value;
+                    minutesBox.Text = value.ToString("0.##");
+                }
                 else
-                    minutesBox.Text = shift.Minutes.ToString(); // Reset nếu không hợp lệ
+                {
+                    minutesBox.Text = shift.Minutes.ToString("0.##"); // Reset nếu không hợp lệ
+                }
             };
             minutesPanel.Children.Add(minutesBox);
             panel.Children.Add(minutesPanel);
@@ -336,5 +629,49 @@ namespace KHSX
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
+    }
+
+    public class CustomConfigBackgroundConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value is bool hasCustom && hasCustom)
+                return new SolidColorBrush(Color.FromRgb(255, 248, 220)); // Màu vàng nhạt (cornsilk)
+            return Brushes.White;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture) => throw new NotImplementedException();
+    }
+
+    public class DayCellBackgroundConverter : IMultiValueConverter
+    {
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (values.Length >= 2)
+            {
+                bool isWeekend = values[0] is bool w && w;
+                bool hasCustomConfig = values[1] is bool c && c;
+
+                if (isWeekend)
+                {
+                    // Weekend với custom: vàng nhạt hơn xám
+                    if (hasCustomConfig)
+                        return new SolidColorBrush(Color.FromRgb(240, 230, 200));
+                    // Weekend bình thường: xám
+                    return new SolidColorBrush(Color.FromRgb(220, 220, 220));
+                }
+                else
+                {
+                    // Ngày thường với custom: vàng nhạt
+                    if (hasCustomConfig)
+                        return new SolidColorBrush(Color.FromRgb(255, 248, 220));
+                    // Ngày thường bình thường: trắng
+                    return Brushes.White;
+                }
+            }
+            return Brushes.White;
+        }
+
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture) => throw new NotImplementedException();
     }
 }
