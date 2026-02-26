@@ -31,8 +31,18 @@ namespace KHSX.ViewModels
         {
             _excelService = new ExcelImportService();
             _configService = new ConfigurationService();
-            InitializeLines();
-            LoadConfiguration();
+            
+            var config = _configService.LoadConfiguration();
+            if (config == null)
+            {
+                // Nếu chưa có config, khởi tạo mặc định
+                InitializeLines();
+            }
+            else
+            {
+                // Load từ config
+                LoadConfiguration();
+            }
         }
 
         private void InitializeLines()
@@ -122,13 +132,53 @@ namespace KHSX.ViewModels
             try
             {
                 var config = _configService.LoadConfiguration();
-                _configService.ApplyConfiguration(config, Lines, 
-                    date => StartDate = date, 
-                    date => DeadlineDate = date);
+                if (config != null)
+                {
+                    _configService.ApplyConfiguration(config, Lines, 
+                        date => StartDate = date, 
+                        date => DeadlineDate = date);
+                }
             }
             catch (Exception ex)
             {
-                // Silent fail on first load if no config exists
+                MessageBox.Show($"Lỗi đọc cấu hình: {ex.Message}", "Lỗi", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        [RelayCommand]
+        private void AddLine()
+        {
+            var newLineName = $"Line {Lines.Count + 1}";
+            var line = new ProductionLine(newLineName);
+            
+            // Add 30 days from start date
+            for (int d = 0; d < 30; d++)
+            {
+                var date = StartDate.AddDays(d);
+                var dayCell = new DayCell(date);
+                dayCell.IsDeadline = date.Date == DeadlineDate.Date;
+                line.Days.Add(dayCell);
+            }
+            
+            Lines.Add(line);
+            SaveConfiguration();
+        }
+
+        [RelayCommand]
+        private void RemoveLine(ProductionLine line)
+        {
+            if (line == null) return;
+
+            var result = MessageBox.Show(
+                $"Bạn có chắc chắn muốn xóa '{line.LineName}'?\nTất cả sản phẩm đã gán sẽ bị mất.",
+                "Xác nhận xóa",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                Lines.Remove(line);
+                SaveConfiguration();
             }
         }
 

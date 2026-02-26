@@ -67,6 +67,91 @@ namespace KHSX
             }
         }
 
+        private void LineName_DoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is TextBlock textBlock && textBlock.DataContext is ProductionLine line)
+            {
+                ShowEditLineNameDialog(line);
+            }
+        }
+
+        private void ShowEditLineNameDialog(ProductionLine line)
+        {
+            var dialog = new Window
+            {
+                Title = "Chỉnh sửa tên Line",
+                Width = 350,
+                Height = 150,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize
+            };
+
+            var grid = new Grid { Margin = new Thickness(20) };
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(20) });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            // TextBox for line name
+            var namePanel = new StackPanel { Orientation = Orientation.Horizontal };
+            namePanel.Children.Add(new TextBlock { Text = "Tên Line:", Width = 80, VerticalAlignment = VerticalAlignment.Center });
+            var nameBox = new TextBox
+            {
+                Width = 200,
+                Text = line.LineName
+            };
+            namePanel.Children.Add(nameBox);
+            Grid.SetRow(namePanel, 0);
+            grid.Children.Add(namePanel);
+
+            // Buttons
+            var buttonPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
+            Grid.SetRow(buttonPanel, 2);
+
+            var saveButton = new Button
+            {
+                Content = "Lưu",
+                Width = 80,
+                Height = 30,
+                Margin = new Thickness(0, 0, 10, 0)
+            };
+            saveButton.Click += (s, e) =>
+            {
+                if (!string.IsNullOrWhiteSpace(nameBox.Text))
+                {
+                    line.LineName = nameBox.Text;
+                    var vm = this.DataContext as MainViewModel;
+                    vm?.SaveConfigurationCommand.Execute(null);
+                    dialog.DialogResult = true;
+                }
+                else
+                {
+                    MessageBox.Show("Tên line không được để trống!", "Lỗi", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            };
+
+            var cancelButton = new Button
+            {
+                Content = "Hủy",
+                Width = 80,
+                Height = 30
+            };
+            cancelButton.Click += (s, e) => dialog.DialogResult = false;
+
+            buttonPanel.Children.Add(saveButton);
+            buttonPanel.Children.Add(cancelButton);
+            grid.Children.Add(buttonPanel);
+
+            dialog.Content = grid;
+            nameBox.Focus();
+            nameBox.SelectAll();
+            dialog.ShowDialog();
+        }
+
         private void ShowEditShiftDialog(DayCell day)
         {
             var dialog = new Window

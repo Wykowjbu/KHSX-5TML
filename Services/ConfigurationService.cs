@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Collections.ObjectModel;
 
 namespace KHSX.Services
 {
@@ -94,7 +95,7 @@ namespace KHSX.Services
             }
         }
 
-        public void ApplyConfiguration(ProductionConfig config, IList<ProductionLine> lines, Action<DateTime> setStartDate, Action<DateTime> setDeadlineDate)
+        public void ApplyConfiguration(ProductionConfig config, ObservableCollection<ProductionLine> lines, Action<DateTime> setStartDate, Action<DateTime> setDeadlineDate)
         {
             if (config == null)
                 return;
@@ -102,24 +103,25 @@ namespace KHSX.Services
             setStartDate(config.StartDate);
             setDeadlineDate(config.DeadlineDate);
 
-            for (int i = 0; i < Math.Min(lines.Count, config.Lines.Count); i++)
+            // Clear existing lines
+            lines.Clear();
+
+            // Recreate lines from config
+            foreach (var lineConfig in config.Lines)
             {
-                var line = lines[i];
-                var lineConfig = config.Lines[i];
-
-                for (int d = 0; d < Math.Min(line.Days.Count, lineConfig.Days.Count); d++)
+                var line = new ProductionLine(lineConfig.LineName);
+                
+                foreach (var dayConfig in lineConfig.Days)
                 {
-                    var day = line.Days[d];
-                    var dayConfig = lineConfig.Days[d];
-
-                    if (day.Date.Date == dayConfig.Date.Date)
-                    {
-                        day.ShiftA.Workers = dayConfig.ShiftA.Workers;
-                        day.ShiftA.Minutes = dayConfig.ShiftA.Minutes;
-                        day.ShiftB.Workers = dayConfig.ShiftB.Workers;
-                        day.ShiftB.Minutes = dayConfig.ShiftB.Minutes;
-                    }
+                    var day = new DayCell(dayConfig.Date);
+                    day.ShiftA.Workers = dayConfig.ShiftA.Workers;
+                    day.ShiftA.Minutes = dayConfig.ShiftA.Minutes;
+                    day.ShiftB.Workers = dayConfig.ShiftB.Workers;
+                    day.ShiftB.Minutes = dayConfig.ShiftB.Minutes;
+                    line.Days.Add(day);
                 }
+                
+                lines.Add(line);
             }
         }
     }

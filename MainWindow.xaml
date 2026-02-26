@@ -44,7 +44,9 @@
         <Border Grid.Row="0" Background="#f0f0f0" BorderBrush="#ccc" BorderThickness="0,0,0,1">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0">
                 <Button Content="Import Excel (pivot openmin)" Command="{Binding ImportExcelCommand}" Padding="10,5" Margin="0,0,10,0"/>
-                <Button Content="Lưu cấu hình" Command="{Binding SaveConfigurationCommand}" Padding="10,5" Margin="0,0,20,0"/>
+                <Button Content="Lưu cấu hình" Command="{Binding SaveConfigurationCommand}" Padding="10,5" Margin="0,0,10,0"/>
+                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="10,0"/>
+                <Button Content="➕ Thêm Line" Command="{Binding AddLineCommand}" Padding="10,5" Margin="0,0,20,0" Background="#4CAF50" Foreground="White"/>
                 <TextBlock Text="Ngày Deadline: " VerticalAlignment="Center" FontWeight="Bold"/>
                 <DatePicker SelectedDate="{Binding DeadlineDate, Mode=TwoWay}" Width="150" Margin="5,0"/>
             </StackPanel>
@@ -90,7 +92,27 @@
 
                                 <!-- Line Name -->
                                 <Border Background="#ddd" BorderBrush="#aaa" BorderThickness="1" Padding="5">
-                                    <TextBlock Text="{Binding LineName}" VerticalAlignment="Center" HorizontalAlignment="Center" FontWeight="Bold"/>
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="*"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        
+                                        <TextBlock Grid.Row="0" Text="{Binding LineName}" 
+                                                   VerticalAlignment="Center" HorizontalAlignment="Center" 
+                                                   FontWeight="Bold" 
+                                                   MouseLeftButtonDown="LineName_DoubleClick"
+                                                   Cursor="Hand"
+                                                   ToolTip="Double-click để đổi tên"/>
+                                        
+                                        <Button Grid.Row="1" Content="🗑️" 
+                                                Command="{Binding DataContext.RemoveLineCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}"
+                                                Width="60" Height="25" Margin="0,5,0,0"
+                                                Background="#f44336" Foreground="White"
+                                                FontSize="12" Padding="2"
+                                                ToolTip="Xóa Line"/>
+                                    </Grid>
                                 </Border>
 
                                 <!-- Days in Line -->
