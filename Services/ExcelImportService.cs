@@ -48,13 +48,13 @@ namespace KHSX.Services
                         for (int i = 0; i < table.Columns.Count; i++)
                         {
                             var colName = table.Columns[i]?.ColumnName?.ToLower() ?? "";
-                            if (colName.Contains("mã") || colName.Contains("code")) codeColIdx = i;
-                            if (colName.Contains("phút") || colName.Contains("minute") || colName.Contains("min")) minColIdx = i;
+                            if (colName.Contains("build group") || colName.Contains("mã") || colName.Contains("code")) codeColIdx = i;
+                            if (colName.Contains("open_min") || colName.Contains("phút") || colName.Contains("min")) minColIdx = i;
                         }
 
                         if (codeColIdx == -1 || minColIdx == -1)
                         {
-                            throw new Exception("Không tìm thấy các cột 'Mã' hoặc 'Số phút còn lại' trên header.");
+                            throw new Exception("Không tìm thấy các cột 'Build group' hoặc 'Sum of OPEN_MIN' trên header.");
                         }
 
                         Random rng = new Random();
@@ -62,12 +62,24 @@ namespace KHSX.Services
                         foreach (DataRow row in table.Rows)
                         {
                             var codeStr = row[codeColIdx]?.ToString() ?? "";
-                            var minStr = row[minColIdx]?.ToString() ?? "";
+                            
+                            double minVal = 0;
+                            var minObj = row[minColIdx];
+                            if (minObj is double d) minVal = d;
+                            else if (minObj is int i) minVal = i;
+                            else if (minObj is long l) minVal = l;
+                            else if (minObj is float f) minVal = f;
+                            else if (minObj is decimal dec) minVal = (double)dec;
+                            else
+                            {
+                                var minStr = minObj?.ToString()?.Replace(",", "") ?? "";
+                                double.TryParse(minStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out minVal);
+                            }
 
-                            if (string.IsNullOrWhiteSpace(codeStr) && string.IsNullOrWhiteSpace(minStr))
+                            if (string.IsNullOrWhiteSpace(codeStr) && minVal <= 0)
                                 continue;
 
-                            if (double.TryParse(minStr, out double minVal) && minVal > 0)
+                            if (minVal > 0)
                             {
                                 // Generate a random light color for display
                                 byte r = (byte)rng.Next(150, 256);

@@ -14,7 +14,13 @@
     </Window.DataContext>
 
     <Window.Resources>
-        <!-- Style cho các khối sản phẩm (ProductBlock) -->
+        <!-- Define converters FIRST -->
+        <local:BoolToRedBorderConverter x:Key="BoolToRedBorderConverter"/>
+        <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <local:WeekendColorConverter x:Key="WeekendColorConverter"/>
+        <local:InverseBoolConverter x:Key="InverseBoolConverter"/>
+        
+        <!-- Then define DataTemplate that uses them -->
         <DataTemplate DataType="{x:Type models:ProductBlock}">
             <Border Background="{Binding DisplayColor}" 
                     BorderBrush="{Binding IsExceedingDeadline, Converter={StaticResource BoolToRedBorderConverter}}" 
@@ -26,11 +32,6 @@
                 <TextBlock Text="{Binding DisplayText}" FontWeight="Bold" Foreground="DarkSlateGray"/>
             </Border>
         </DataTemplate>
-        
-        <local:BoolToRedBorderConverter x:Key="BoolToRedBorderConverter"/>
-        <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
-        <local:WeekendColorConverter x:Key="WeekendColorConverter"/>
-        <local:InverseBoolConverter x:Key="InverseBoolConverter"/>
     </Window.Resources>
 
     <Grid>
