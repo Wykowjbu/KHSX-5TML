@@ -13,6 +13,7 @@ namespace KHSX.ViewModels
     public partial class MainViewModel : ObservableObject
     {
         private readonly ExcelImportService _excelService;
+        private readonly ConfigurationService _configService;
 
         [ObservableProperty]
         private ObservableCollection<ProductBlock> unassignedBlocks = new ObservableCollection<ProductBlock>();
@@ -29,7 +30,9 @@ namespace KHSX.ViewModels
         public MainViewModel()
         {
             _excelService = new ExcelImportService();
+            _configService = new ConfigurationService();
             InitializeLines();
+            LoadConfiguration();
         }
 
         private void InitializeLines()
@@ -64,6 +67,12 @@ namespace KHSX.ViewModels
                     CheckBlockExceeding(day); // Recheck block limits
                 }
             }
+            SaveConfiguration();
+        }
+
+        partial void OnStartDateChanged(DateTime value)
+        {
+            InitializeLines();
         }
 
         [RelayCommand]
@@ -91,6 +100,35 @@ namespace KHSX.ViewModels
                 {
                     MessageBox.Show(ex.Message, "Lỗi Import", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
+            }
+        }
+
+        [RelayCommand]
+        private void SaveConfiguration()
+        {
+            try
+            {
+                _configService.SaveConfiguration(StartDate, DeadlineDate, Lines);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Lỗi lưu cấu hình: {ex.Message}", "Lỗi", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        [RelayCommand]
+        private void LoadConfiguration()
+        {
+            try
+            {
+                var config = _configService.LoadConfiguration();
+                _configService.ApplyConfiguration(config, Lines, 
+                    date => StartDate = date, 
+                    date => DeadlineDate = date);
+            }
+            catch (Exception ex)
+            {
+                // Silent fail on first load if no config exists
             }
         }
 

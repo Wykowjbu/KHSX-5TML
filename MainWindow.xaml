@@ -43,7 +43,8 @@
         <!-- Header -->
         <Border Grid.Row="0" Background="#f0f0f0" BorderBrush="#ccc" BorderThickness="0,0,0,1">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0">
-                <Button Content="Import Excel (pivot openmin)" Command="{Binding ImportExcelCommand}" Padding="10,5" Margin="0,0,20,0"/>
+                <Button Content="Import Excel (pivot openmin)" Command="{Binding ImportExcelCommand}" Padding="10,5" Margin="0,0,10,0"/>
+                <Button Content="Lưu cấu hình" Command="{Binding SaveConfigurationCommand}" Padding="10,5" Margin="0,0,20,0"/>
                 <TextBlock Text="Ngày Deadline: " VerticalAlignment="Center" FontWeight="Bold"/>
                 <DatePicker SelectedDate="{Binding DeadlineDate, Mode=TwoWay}" Width="150" Margin="5,0"/>
             </StackPanel>
@@ -101,11 +102,12 @@
                                     </ItemsControl.ItemsPanel>
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate DataType="{x:Type models:DayCell}">
-                                            <Border Width="120" Height="80" 
+                                            <Border Width="120" Height="100" 
                                                     BorderBrush="#aaa" BorderThickness="1" 
                                                     Background="{Binding IsWeekend, Converter={StaticResource WeekendColorConverter}}"
                                                     AllowDrop="{Binding IsWeekend, Converter={StaticResource InverseBoolConverter}}"
                                                     Drop="DayCell_Drop" DragEnter="DayCell_DragEnter"
+                                                    MouseRightButtonUp="DayCell_RightClick"
                                                     Tag="{Binding}">
                                                 
                                                 <Grid>
@@ -124,12 +126,12 @@
                                                     
                                                     <!-- Watermark Ca A | Ca B | Tổng -->
                                                     <TextBlock Grid.Row="1" Text="{Binding WatermarkText}" 
-                                                               Foreground="#d0d0d0" FontSize="10" 
+                                                               Foreground="#888" FontSize="9" 
                                                                HorizontalAlignment="Center" VerticalAlignment="Bottom"
-                                                               Margin="0,0,0,2" Panel.ZIndex="0"/>
+                                                               Margin="0,0,0,2" Panel.ZIndex="0" TextWrapping="Wrap"/>
 
                                                     <!-- Assigned Blocks -->
-                                                    <ItemsControl Grid.Row="1" ItemsSource="{Binding Blocks}" Panel.ZIndex="1">
+                                                    <ItemsControl Grid.Row="1" ItemsSource="{Binding Blocks}" Panel.ZIndex="1" VerticalAlignment="Top">
                                                         <ItemsControl.ItemsPanel>
                                                             <ItemsPanelTemplate>
                                                                 <StackPanel Orientation="Vertical"/>

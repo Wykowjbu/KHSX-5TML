@@ -52,10 +52,139 @@ namespace KHSX
                         {
                             var vm = this.DataContext as MainViewModel;
                             vm?.HandleDrop(block, targetDay, targetLine);
+                            vm?.SaveConfigurationCommand.Execute(null);
                         }
                     }
                 }
             }
+        }
+
+        private void DayCell_RightClick(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is Border border && border.Tag is DayCell day && !day.IsWeekend)
+            {
+                ShowEditShiftDialog(day);
+            }
+        }
+
+        private void ShowEditShiftDialog(DayCell day)
+        {
+            var dialog = new Window
+            {
+                Title = $"Chỉnh sửa ca làm việc - {day.Date:dd/MM/yyyy}",
+                Width = 400,
+                Height = 300,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize
+            };
+
+            var grid = new Grid { Margin = new Thickness(20) };
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(20) });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(20) });
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+            // Shift A
+            var shiftAPanel = CreateShiftPanel("Ca A", day.ShiftA);
+            Grid.SetRow(shiftAPanel, 0);
+            grid.Children.Add(shiftAPanel);
+
+            // Shift B
+            var shiftBPanel = CreateShiftPanel("Ca B", day.ShiftB);
+            Grid.SetRow(shiftBPanel, 2);
+            grid.Children.Add(shiftBPanel);
+
+            // Buttons
+            var buttonPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Right
+            };
+            Grid.SetRow(buttonPanel, 4);
+
+            var saveButton = new Button
+            {
+                Content = "Lưu",
+                Width = 80,
+                Height = 30,
+                Margin = new Thickness(0, 0, 10, 0)
+            };
+            saveButton.Click += (s, e) =>
+            {
+                var vm = this.DataContext as MainViewModel;
+                vm?.SaveConfigurationCommand.Execute(null);
+                dialog.DialogResult = true;
+            };
+
+            var cancelButton = new Button
+            {
+                Content = "Hủy",
+                Width = 80,
+                Height = 30
+            };
+            cancelButton.Click += (s, e) => dialog.DialogResult = false;
+
+            buttonPanel.Children.Add(saveButton);
+            buttonPanel.Children.Add(cancelButton);
+            grid.Children.Add(buttonPanel);
+
+            dialog.Content = grid;
+            dialog.ShowDialog();
+        }
+
+        private StackPanel CreateShiftPanel(string title, ShiftConfig shift)
+        {
+            var panel = new StackPanel();
+
+            // Title
+            var titleBlock = new TextBlock
+            {
+                Text = title,
+                FontWeight = FontWeights.Bold,
+                FontSize = 14,
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+            panel.Children.Add(titleBlock);
+
+            // Workers
+            var workersPanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 10) };
+            workersPanel.Children.Add(new TextBlock { Text = "Số người:", Width = 100, VerticalAlignment = VerticalAlignment.Center });
+            var workersBox = new TextBox
+            {
+                Width = 100,
+                Text = shift.Workers.ToString()
+            };
+            workersBox.LostFocus += (s, e) =>
+            {
+                if (int.TryParse(workersBox.Text, out int value) && value >= 0)
+                    shift.Workers = value;
+                else
+                    workersBox.Text = shift.Workers.ToString(); // Reset nếu không hợp lệ
+            };
+            workersPanel.Children.Add(workersBox);
+            panel.Children.Add(workersPanel);
+
+            // Minutes
+            var minutesPanel = new StackPanel { Orientation = Orientation.Horizontal };
+            minutesPanel.Children.Add(new TextBlock { Text = "Số phút/người:", Width = 100, VerticalAlignment = VerticalAlignment.Center });
+            var minutesBox = new TextBox
+            {
+                Width = 100,
+                Text = shift.Minutes.ToString()
+            };
+            minutesBox.LostFocus += (s, e) =>
+            {
+                if (double.TryParse(minutesBox.Text, out double value) && value >= 0)
+                    shift.Minutes = value;
+                else
+                    minutesBox.Text = shift.Minutes.ToString(); // Reset nếu không hợp lệ
+            };
+            minutesPanel.Children.Add(minutesBox);
+            panel.Children.Add(minutesPanel);
+
+            return panel;
         }
 
         // Hàm helper để tìm ProductionLine chứa DayCell đang được drop

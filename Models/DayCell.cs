@@ -7,6 +7,8 @@ namespace KHSX.Models
 {
     public partial class DayCell : ObservableObject
     {
+        private const double EfficiencyRate = 1.15; // 115% hiệu suất
+
         [ObservableProperty]
         private DateTime date;
 
@@ -16,11 +18,13 @@ namespace KHSX.Models
         [ObservableProperty]
         private bool isDeadline;
 
-        // Khởi tạo giới hạn thời gian cơ bản của ca
-        private const double MaxShiftAMinutes = 480;
-        private const double MaxShiftBMinutes = 480;
+        [ObservableProperty]
+        private ShiftConfig shiftA = new ShiftConfig { Workers = 1, Minutes = 480 };
 
-        public double TotalCapacity => MaxShiftAMinutes + MaxShiftBMinutes;
+        [ObservableProperty]
+        private ShiftConfig shiftB = new ShiftConfig { Workers = 1, Minutes = 480 };
+
+        public double TotalCapacity => (ShiftA.TotalCapacity + ShiftB.TotalCapacity) * EfficiencyRate;
 
         public ObservableCollection<ProductBlock> Blocks { get; } = new ObservableCollection<ProductBlock>();
 
@@ -36,16 +40,38 @@ namespace KHSX.Models
                 OnPropertyChanged(nameof(WatermarkText));
                 OnPropertyChanged(nameof(AvailableMinutes));
             };
+
+            // Listen to shift config changes
+            ShiftA.PropertyChanged += (s, e) =>
+            {
+                OnPropertyChanged(nameof(TotalCapacity));
+                OnPropertyChanged(nameof(AvailableMinutes));
+                OnPropertyChanged(nameof(WatermarkText));
+                OnPropertyChanged(nameof(ShiftAUsed));
+                OnPropertyChanged(nameof(ShiftBUsed));
+            };
+
+            ShiftB.PropertyChanged += (s, e) =>
+            {
+                OnPropertyChanged(nameof(TotalCapacity));
+                OnPropertyChanged(nameof(AvailableMinutes));
+                OnPropertyChanged(nameof(WatermarkText));
+                OnPropertyChanged(nameof(ShiftAUsed));
+                OnPropertyChanged(nameof(ShiftBUsed));
+            };
         }
 
         public double TotalUsed => Blocks.Sum(b => b.AllocatedMinutes);
 
-        public double ShiftAUsed => Math.Min(TotalUsed, MaxShiftAMinutes);
+        public double ShiftAUsed => Math.Min(TotalUsed, ShiftA.TotalCapacity);
 
-        public double ShiftBUsed => Math.Max(0, TotalUsed - MaxShiftAMinutes);
+        public double ShiftBUsed => Math.Max(0, TotalUsed - ShiftA.TotalCapacity);
 
         public double AvailableMinutes => TotalCapacity - TotalUsed;
 
-        public string WatermarkText => IsWeekend ? "Nghỉ" : $"{Math.Round(ShiftAUsed)}/{MaxShiftAMinutes} | {Math.Round(ShiftBUsed)}/{MaxShiftBMinutes} | {Math.Round(TotalUsed)}";
+        public string WatermarkText => IsWeekend ? "Nghỉ" : 
+            $"A:{ShiftA.Workers}per({ShiftA.Minutes})\n" +
+            $"B:{ShiftB.Workers}per({ShiftB.Minutes})\n" +
+            $"Total: {Math.Round(TotalCapacity)}";
     }
 }
