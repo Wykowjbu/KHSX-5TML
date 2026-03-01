@@ -524,17 +524,17 @@ namespace KHSX
                 Width = 100,
                 Text = shift.Workers.ToString("0.##") // Format với tối đa 2 chữ số thập phân
             };
-            workersBox.LostFocus += (s, e) =>
+            workersBox.TextChanged += (s, e) =>
             {
                 if (double.TryParse(workersBox.Text, out double value) && value >= 0)
                 {
                     shift.Workers = value;
-                    workersBox.Text = value.ToString("0.##");
                 }
-                else
-                {
-                    workersBox.Text = shift.Workers.ToString("0.##"); // Reset nếu không hợp lệ
-                }
+            };
+            workersBox.LostFocus += (s, e) =>
+            {
+                // Format text when losing focus
+                workersBox.Text = shift.Workers.ToString("0.##");
             };
             workersPanel.Children.Add(workersBox);
             panel.Children.Add(workersPanel);
@@ -547,17 +547,17 @@ namespace KHSX
                 Width = 100,
                 Text = shift.Minutes.ToString("0.##")
             };
-            minutesBox.LostFocus += (s, e) =>
+            minutesBox.TextChanged += (s, e) =>
             {
                 if (double.TryParse(minutesBox.Text, out double value) && value >= 0)
                 {
                     shift.Minutes = value;
-                    minutesBox.Text = value.ToString("0.##");
                 }
-                else
-                {
-                    minutesBox.Text = shift.Minutes.ToString("0.##"); // Reset nếu không hợp lệ
-                }
+            };
+            minutesBox.LostFocus += (s, e) =>
+            {
+                // Format text when losing focus
+                minutesBox.Text = shift.Minutes.ToString("0.##");
             };
             minutesPanel.Children.Add(minutesBox);
             panel.Children.Add(minutesPanel);
@@ -673,5 +673,27 @@ namespace KHSX
         }
 
         public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture) => throw new NotImplementedException();
+    }
+
+    // Converter để chuyển đổi tỷ lệ % thành chiều rộng thực tế dựa trên ActualWidth của parent
+    public class PercentageToWidthConverter : IMultiValueConverter
+    {
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (values.Length >= 2 && 
+                values[0] is double percentage && 
+                values[1] is double containerWidth &&
+                containerWidth > 0)
+            {
+                // Trừ đi padding và margin
+                double availableWidth = containerWidth - 40; // 20px padding mỗi bên
+                double width = availableWidth * percentage;
+                return Math.Max(60, Math.Min(width, availableWidth)); // Min 60, max = available
+            }
+            return 100.0; // Default width
+        }
+
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture) 
+            => throw new NotImplementedException();
     }
 }

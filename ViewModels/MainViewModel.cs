@@ -202,10 +202,44 @@ namespace KHSX.ViewModels
             }
             else
             {
-                // Nếu block được di chuyển từ lưới (grid), phải remove khỏi chỗ cũ trước
-                RemoveBlockFromGrid(droppedBlock.ParentId ?? droppedBlock.Id);
-                // Gán lại
-                AssignBlockRecursively(droppedBlock, targetDay, targetLine);
+                // Nếu block được di chuyển từ lưới (grid), phải tính tổng phút của tất cả
+                // các mảnh split trước khi xóa, rồi gán lại toàn bộ
+                Guid parentId = droppedBlock.ParentId ?? droppedBlock.Id;
+                
+                // Tính tổng AllocatedMinutes của tất cả split blocks cùng ParentId
+                double totalMinutes = 0;
+                foreach (var line in Lines)
+                {
+                    foreach (var day in line.Days)
+                    {
+                        foreach (var b in day.Blocks)
+                        {
+                            if (b.ParentId == parentId || b.Id == parentId)
+                            {
+                                totalMinutes += b.AllocatedMinutes;
+                            }
+                        }
+                    }
+                }
+
+                // Làm tròn để tránh floating point issues
+                totalMinutes = Math.Round(totalMinutes, 2);
+
+                // Remove tất cả split blocks khỏi grid
+                RemoveBlockFromGrid(parentId);
+                
+                // Tạo block mới với tổng phút đầy đủ để gán lại
+                var reconstructedBlock = new ProductBlock
+                {
+                    ParentId = parentId,
+                    SourceId = droppedBlock.SourceId,
+                    Code = droppedBlock.Code,
+                    TotalMinutesRequired = droppedBlock.TotalMinutesRequired,
+                    AllocatedMinutes = totalMinutes,
+                    DisplayColor = droppedBlock.DisplayColor
+                };
+                
+                AssignBlockRecursively(reconstructedBlock, targetDay, targetLine);
             }
         }
 
@@ -226,10 +260,10 @@ namespace KHSX.ViewModels
 
         private void AssignBlockRecursively(ProductBlock block, DayCell currentDay, ProductionLine currentLine)
         {
-            double remainingMin = block.AllocatedMinutes;
+            double remainingMin = Math.Round(block.AllocatedMinutes, 2);
             int dayIndex = currentLine.Days.IndexOf(currentDay);
 
-            while (remainingMin > 0 && dayIndex < currentLine.Days.Count)
+            while (remainingMin > 0.01 && dayIndex < currentLine.Days.Count) // Dùng 0.01 thay vì 0 để tránh floating point issues
             {
                 var workDay = currentLine.Days[dayIndex];
                 
@@ -239,29 +273,29 @@ namespace KHSX.ViewModels
                     continue; // Skip sunday
                 }
 
-                double available = workDay.AvailableMinutes;
+                double available = Math.Round(workDay.AvailableMinutes, 2);
                 
-                if (available > 0)
+                if (available > 0.01)
                 {
-                    double toAssign = Math.Min(available, remainingMin);
+                    double toAssign = Math.Round(Math.Min(available, remainingMin), 2);
                     
                     var splitBlock = block.CloneWithSplit(toAssign);
                     splitBlock.IsExceedingDeadline = workDay.Date > DeadlineDate;
 
                     workDay.Blocks.Add(splitBlock);
                     
-                    remainingMin -= toAssign;
+                    remainingMin = Math.Round(remainingMin - toAssign, 2);
                 }
 
                 dayIndex++;
             }
 
             // Nếu vòng lặp kết thúc mà vẫn còn dư -> tức là tràn đến ngày cuối cùng, ta cho hiển thị cảnh báo
-            if (remainingMin > 0)
+            if (remainingMin > 0.01)
             {
                 // Để biểu diễn số phút còn dư chưa gán được, ta trả lại vào Unassigned? 
                 // Hoặc báo lỗi.
-                MessageBox.Show($"Line này không đủ công suất cho sản phẩm {block.Code}. Còn thừa {remainingMin} phút chưa được xếp lịch.", 
+                MessageBox.Show($"Line này không đủ công suất cho sản phẩm {block.Code}. Còn thừa {remainingMin:0.##} phút chưa được xếp lịch.", 
                               "Cảnh báo", MessageBoxButton.OK, MessageBoxImage.Warning);
                 
                 var unassignedPortion = block.CloneWithSplit(remainingMin);

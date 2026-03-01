@@ -7,6 +7,11 @@ namespace KHSX.Models
 {
     public partial class ProductBlock : ObservableObject
     {
+        // Dùng để scale chiều rộng - block có AllocatedMinutes này sẽ có chiều rộng tối đa (100%)
+        private const double MaxMinutesForScale = 50000; // 50000 phút = 100% chiều rộng
+        private const double MinWidthPercent = 20;       // Chiều rộng tối thiểu 20%
+        private const double MaxWidthPercent = 100;      // Chiều rộng tối đa 100%
+
         [ObservableProperty]
         private string sourceId = string.Empty;
 
@@ -31,8 +36,37 @@ namespace KHSX.Models
         // Thuộc tính để nhận diện block gốc (danh sách chờ) hay đoạn cắt ra (trên lưới)
         public Guid? ParentId { get; set; }
         
-        // Tên hiển thị trên lưới hoặc trên block chờ
-        public string DisplayText => $"{Code} ({AllocatedMinutes}m)";
+        // Tên hiển thị trên lưới hoặc trên block chờ - làm tròn để tránh số .99
+        public string DisplayText => $"{Code} ({AllocatedMinutes:0.##}m)";
+
+        // Tỷ lệ phần trăm chiều rộng dựa trên số phút (0.2 - 1.0)
+        // Block có nhiều phút sẽ chiếm nhiều % chiều rộng hơn
+        public double WidthPercentage
+        {
+            get
+            {
+                if (AllocatedMinutes <= 0)
+                    return MinWidthPercent / 100.0;
+
+                // Tính tỷ lệ phần trăm so với MaxMinutesForScale
+                double ratio = Math.Min(AllocatedMinutes / MaxMinutesForScale, 1.0);
+                
+                // Dùng căn bậc 2 để tạo sự khác biệt rõ hơn giữa các block nhỏ
+                double scaledRatio = Math.Sqrt(ratio);
+                
+                // Tính % trong khoảng Min-Max (0.2 - 1.0)
+                double percent = (MinWidthPercent + (MaxWidthPercent - MinWidthPercent) * scaledRatio) / 100.0;
+                
+                return percent;
+            }
+        }
+
+        // Cập nhật UI khi AllocatedMinutes thay đổi
+        partial void OnAllocatedMinutesChanged(double value)
+        {
+            OnPropertyChanged(nameof(DisplayText));
+            OnPropertyChanged(nameof(WidthPercentage));
+        }
 
         public ProductBlock CloneWithSplit(double minutesToSplit)
         {
@@ -42,7 +76,7 @@ namespace KHSX.Models
                 SourceId = this.SourceId,
                 Code = this.Code,
                 TotalMinutesRequired = this.TotalMinutesRequired,
-                AllocatedMinutes = minutesToSplit,
+                AllocatedMinutes = Math.Round(minutesToSplit, 2),
                 DisplayColor = this.DisplayColor
             };
         }

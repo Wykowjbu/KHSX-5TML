@@ -76,6 +76,10 @@ namespace KHSX.Services
                                 double.TryParse(minStr, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out minVal);
                             }
 
+                            // Làm tròn đến 2 chữ số thập phân để tránh lỗi floating point
+                            // Nếu số gốc là số nguyên (VD: 1000.0) thì kết quả vẫn là số nguyên
+                            minVal = Math.Round(minVal, 2);
+
                             if (string.IsNullOrWhiteSpace(codeStr) && minVal <= 0)
                                 continue;
 
