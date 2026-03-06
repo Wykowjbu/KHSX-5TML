@@ -2,7 +2,7 @@
 
 Bước 1
 
-Import file Marketing.
+Import file Marketing.( thường chỉ import 1 lần lúc nhận release từ Maketing, còn lại muốn thêm Gr.xxx mới import lại)
 
 Bước 2
 

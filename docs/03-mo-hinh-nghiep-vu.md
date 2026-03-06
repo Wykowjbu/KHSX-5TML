@@ -46,4 +46,5 @@ Gr.286
 
 Đây là các batch sản xuất được phát hành từ Marketing.
 
-Mỗi group có deadline riêng.
+Mỗi group có deadline riêng. 
+Chú ý quan trong việc settdealine là set cho Gr.xx(ProductionGroup) chứ ko phải setdealine cho ProductGroup

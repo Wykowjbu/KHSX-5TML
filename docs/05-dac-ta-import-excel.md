@@ -25,6 +25,10 @@ Group: BM8R030
 Minutes: 18
 
 ---
+Cột A là tên sản phẩm
+Ô E1,F1,G1,H1,I1,J1 lần lương là tên các Gr.xxx
+Cột K bắt đau từ hàng 2 là tên nhóm sản phẩm
+cột M là tên function
 
 # File MES
 
@@ -40,3 +44,6 @@ Ví dụ:
 BM8R093105
 
 Open Minutes: 142.92
+
+--
+Cột D20 xuống là tên sản phẩm, I20 xuống là số phút còn lại

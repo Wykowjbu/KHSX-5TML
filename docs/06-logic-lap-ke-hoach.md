@@ -36,3 +36,9 @@ Efficiency = 115%
 Capacity = 5 × 480 × 1.15
 
 = 2760 phút
+
+
+
+Khi kéo block sản phẩm vào cell, nếu cell đó đã có block sản phẩm, thì block sản phẩm mới sẽ được thêm vào sau block sản phẩm cũ. Block sản phẩm lun đc đẩy lên để tối ưu ví dụ hôm nay là 29/5 thì kéo vào ô 30/5 mà 29/5 đang trống thì nó tự chuyển qua 29/5 để tối ưu.
+
+Hoặc 29/5 tổng capa là 1000 mà mới dùng hết 500 thì sẽ có 500 của block đó lấp vào
