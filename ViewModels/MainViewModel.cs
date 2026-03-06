@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Text;
 using System.Windows;
 using System.Windows.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -83,6 +85,9 @@ namespace KHSX.ViewModels
                 }
             }
             SaveConfiguration();
+            
+            // Hiển thị cảnh báo vượt deadline nếu có
+            ShowDeadlineExceedWarning();
         }
 
         partial void OnStartDateChanged(DateTime value)
@@ -202,44 +207,145 @@ namespace KHSX.ViewModels
             }
             else
             {
-                // Nếu block được di chuyển từ lưới (grid), phải tính tổng phút của tất cả
-                // các mảnh split trước khi xóa, rồi gán lại toàn bộ
+                // Block được di chuyển từ lưới (grid)
                 Guid parentId = droppedBlock.ParentId ?? droppedBlock.Id;
                 
-                // Tính tổng AllocatedMinutes của tất cả split blocks cùng ParentId
-                double totalMinutes = 0;
-                foreach (var line in Lines)
+                // Kiểm tra xem block được kéo có VƯỢT deadline không
+                if (droppedBlock.IsExceedingDeadline)
                 {
-                    foreach (var day in line.Days)
+                    // CHỈ di chuyển phần SAU deadline, GIỮ NGUYÊN phần trước deadline
+                    HandleDropExceedingBlock(droppedBlock, parentId, targetDay, targetLine);
+                }
+                else
+                {
+                    // Block TRƯỚC deadline hoặc không vượt -> di chuyển TOÀN BỘ (logic cũ)
+                    HandleDropFullBlock(droppedBlock, parentId, targetDay, targetLine);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Xử lý kéo thả block VƯỢT deadline - chỉ di chuyển phần sau deadline
+        /// </summary>
+        private void HandleDropExceedingBlock(ProductBlock droppedBlock, Guid parentId, DayCell targetDay, ProductionLine targetLine)
+        {
+            // Tính tổng phút TRƯỚC deadline và SAU deadline
+            double minutesBeforeDeadline = 0;
+            double minutesAfterDeadline = 0;
+            
+            foreach (var line in Lines)
+            {
+                foreach (var day in line.Days)
+                {
+                    foreach (var b in day.Blocks)
                     {
-                        foreach (var b in day.Blocks)
+                        if (b.ParentId == parentId || b.Id == parentId)
                         {
-                            if (b.ParentId == parentId || b.Id == parentId)
+                            if (day.Date <= DeadlineDate)
                             {
-                                totalMinutes += b.AllocatedMinutes;
+                                minutesBeforeDeadline += b.AllocatedMinutes;
+                            }
+                            else
+                            {
+                                minutesAfterDeadline += b.AllocatedMinutes;
                             }
                         }
                     }
                 }
+            }
 
-                // Làm tròn để tránh floating point issues
-                totalMinutes = Math.Round(totalMinutes, 2);
+            minutesBeforeDeadline = Math.Round(minutesBeforeDeadline, 2);
+            minutesAfterDeadline = Math.Round(minutesAfterDeadline, 2);
 
-                // Remove tất cả split blocks khỏi grid
-                RemoveBlockFromGrid(parentId);
-                
-                // Tạo block mới với tổng phút đầy đủ để gán lại
-                var reconstructedBlock = new ProductBlock
+            // Nếu không có phút nào sau deadline, không cần làm gì
+            if (minutesAfterDeadline <= 0.01)
+            {
+                MessageBox.Show("Không có phút nào sau deadline để di chuyển.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            // Xóa CHỈ các block SAU deadline (giữ nguyên phần trước deadline)
+            RemoveBlocksAfterDeadline(parentId);
+            
+            // Tạo block mới với số phút SAU deadline để gán vào line mới
+            var blockToMove = new ProductBlock
+            {
+                ParentId = parentId,
+                SourceId = droppedBlock.SourceId,
+                Code = droppedBlock.Code,
+                TotalMinutesRequired = droppedBlock.TotalMinutesRequired,
+                AllocatedMinutes = minutesAfterDeadline,
+                DisplayColor = droppedBlock.DisplayColor
+            };
+            
+            AssignBlockRecursively(blockToMove, targetDay, targetLine);
+
+            // Thông báo cho user
+            string message = $"Đã di chuyển {minutesAfterDeadline:0.##} phút (phần sau deadline) của {droppedBlock.Code} sang {targetLine.LineName}.\n" +
+                           $"Giữ nguyên {minutesBeforeDeadline:0.##} phút (phần trước deadline) ở vị trí cũ.";
+            MessageBox.Show(message, "Điều phối thành công", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        /// <summary>
+        /// Xử lý kéo thả block TOÀN BỘ (không vượt deadline hoặc kéo từ phần trước deadline)
+        /// </summary>
+        private void HandleDropFullBlock(ProductBlock droppedBlock, Guid parentId, DayCell targetDay, ProductionLine targetLine)
+        {
+            // Tính tổng AllocatedMinutes của tất cả split blocks cùng ParentId
+            double totalMinutes = 0;
+            foreach (var line in Lines)
+            {
+                foreach (var day in line.Days)
                 {
-                    ParentId = parentId,
-                    SourceId = droppedBlock.SourceId,
-                    Code = droppedBlock.Code,
-                    TotalMinutesRequired = droppedBlock.TotalMinutesRequired,
-                    AllocatedMinutes = totalMinutes,
-                    DisplayColor = droppedBlock.DisplayColor
-                };
-                
-                AssignBlockRecursively(reconstructedBlock, targetDay, targetLine);
+                    foreach (var b in day.Blocks)
+                    {
+                        if (b.ParentId == parentId || b.Id == parentId)
+                        {
+                            totalMinutes += b.AllocatedMinutes;
+                        }
+                    }
+                }
+            }
+
+            // Làm tròn để tránh floating point issues
+            totalMinutes = Math.Round(totalMinutes, 2);
+
+            // Remove tất cả split blocks khỏi grid
+            RemoveBlockFromGrid(parentId);
+            
+            // Tạo block mới với tổng phút đầy đủ để gán lại
+            var reconstructedBlock = new ProductBlock
+            {
+                ParentId = parentId,
+                SourceId = droppedBlock.SourceId,
+                Code = droppedBlock.Code,
+                TotalMinutesRequired = droppedBlock.TotalMinutesRequired,
+                AllocatedMinutes = totalMinutes,
+                DisplayColor = droppedBlock.DisplayColor
+            };
+            
+            AssignBlockRecursively(reconstructedBlock, targetDay, targetLine);
+        }
+
+        /// <summary>
+        /// Xóa chỉ các block SAU deadline của một ParentId
+        /// </summary>
+        private void RemoveBlocksAfterDeadline(Guid parentId)
+        {
+            foreach (var line in Lines)
+            {
+                foreach (var day in line.Days)
+                {
+                    // Chỉ xóa block ở các ngày SAU deadline
+                    if (day.Date > DeadlineDate)
+                    {
+                        var blocksToRemove = day.Blocks.Where(b => b.ParentId == parentId || b.Id == parentId).ToList();
+                        foreach (var b in blocksToRemove)
+                        {
+                            day.Blocks.Remove(b);
+                        }
+                    }
+                }
             }
         }
 
@@ -311,5 +417,86 @@ namespace KHSX.ViewModels
                 block.IsExceedingDeadline = hasExceeded;
             }
         }
+
+        /// <summary>
+        /// Hiển thị cảnh báo chi tiết về các sản phẩm vượt deadline
+        /// </summary>
+        private void ShowDeadlineExceedWarning()
+        {
+            var exceedingInfo = GetDeadlineExceedingInfo();
+            
+            if (exceedingInfo.Count == 0)
+                return;
+
+            var sb = new StringBuilder();
+            sb.AppendLine("⚠️ CÓ SẢN PHẨM VƯỢT DEADLINE:");
+            sb.AppendLine();
+            
+            double totalExceedMinutes = 0;
+            foreach (var info in exceedingInfo)
+            {
+                sb.AppendLine($"• {info.ProductCode}: {info.ExceedMinutes:0.##} phút ({info.LineName})");
+                totalExceedMinutes += info.ExceedMinutes;
+            }
+            
+            sb.AppendLine();
+            sb.AppendLine($"📊 TỔNG: {exceedingInfo.Count} sản phẩm, {totalExceedMinutes:0.##} phút vượt deadline");
+            sb.AppendLine();
+            sb.AppendLine("💡 MẸO: Kéo block viền đỏ sang line khác để điều phối.");
+            sb.AppendLine("   Chỉ phần vượt deadline sẽ được di chuyển.");
+
+            MessageBox.Show(sb.ToString(), "Cảnh báo Vượt Deadline", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+
+        /// <summary>
+        /// Lấy thông tin chi tiết các sản phẩm vượt deadline
+        /// </summary>
+        public List<DeadlineExceedInfo> GetDeadlineExceedingInfo()
+        {
+            var result = new List<DeadlineExceedInfo>();
+            
+            // Group theo ParentId để tránh đếm trùng các split blocks
+            var exceedingByProduct = new Dictionary<Guid, DeadlineExceedInfo>();
+            
+            foreach (var line in Lines)
+            {
+                foreach (var day in line.Days)
+                {
+                    if (day.Date > DeadlineDate)
+                    {
+                        foreach (var block in day.Blocks)
+                        {
+                            var parentId = block.ParentId ?? block.Id;
+                            
+                            if (!exceedingByProduct.ContainsKey(parentId))
+                            {
+                                exceedingByProduct[parentId] = new DeadlineExceedInfo
+                                {
+                                    ProductCode = block.Code,
+                                    ParentId = parentId,
+                                    LineName = line.LineName,
+                                    ExceedMinutes = 0
+                                };
+                            }
+                            
+                            exceedingByProduct[parentId].ExceedMinutes += block.AllocatedMinutes;
+                        }
+                    }
+                }
+            }
+            
+            return exceedingByProduct.Values.ToList();
+        }
+    }
+
+    /// <summary>
+    /// Thông tin sản phẩm vượt deadline
+    /// </summary>
+    public class DeadlineExceedInfo
+    {
+        public string ProductCode { get; set; } = string.Empty;
+        public Guid ParentId { get; set; }
+        public string LineName { get; set; } = string.Empty;
+        public double ExceedMinutes { get; set; }
     }
 }

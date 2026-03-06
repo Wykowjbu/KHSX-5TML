@@ -39,6 +39,27 @@ namespace KHSX.Models
         // Tên hiển thị trên lưới hoặc trên block chờ - làm tròn để tránh số .99
         public string DisplayText => $"{Code} ({AllocatedMinutes:0.##}m)";
 
+        /// <summary>
+        /// Tooltip hiển thị thông tin chi tiết cho block
+        /// </summary>
+        public string TooltipText
+        {
+            get
+            {
+                if (IsExceedingDeadline)
+                {
+                    return $"{Code}\n" +
+                           $"Phút: {AllocatedMinutes:0.##}\n" +
+                           $"⚠️ VƯỢT DEADLINE\n" +
+                           $"💡 Kéo block này sang line khác để điều phối.\n" +
+                           $"   Chỉ phần vượt deadline sẽ được di chuyển.";
+                }
+                return $"{Code}\n" +
+                       $"Phút: {AllocatedMinutes:0.##}\n" +
+                       $"Tổng yêu cầu: {TotalMinutesRequired:0.##}";
+            }
+        }
+
         // Tỷ lệ phần trăm chiều rộng dựa trên số phút (0.2 - 1.0)
         // Block có nhiều phút sẽ chiếm nhiều % chiều rộng hơn
         public double WidthPercentage
@@ -66,6 +87,13 @@ namespace KHSX.Models
         {
             OnPropertyChanged(nameof(DisplayText));
             OnPropertyChanged(nameof(WidthPercentage));
+            OnPropertyChanged(nameof(TooltipText));
+        }
+
+        // Cập nhật UI khi IsExceedingDeadline thay đổi
+        partial void OnIsExceedingDeadlineChanged(bool value)
+        {
+            OnPropertyChanged(nameof(TooltipText));
         }
 
         public ProductBlock CloneWithSplit(double minutesToSplit)

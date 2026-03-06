@@ -16,6 +16,7 @@
     <Window.Resources>
         <!-- Define converters FIRST -->
         <local:BoolToRedBorderConverter x:Key="BoolToRedBorderConverter"/>
+        <local:BoolToBorderThicknessConverter x:Key="BoolToBorderThicknessConverter"/>
         <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
         <local:WeekendColorConverter x:Key="WeekendColorConverter"/>
         <local:InverseBoolConverter x:Key="InverseBoolConverter"/>
@@ -27,11 +28,13 @@
         <DataTemplate DataType="{x:Type models:ProductBlock}">
             <Border Background="{Binding DisplayColor}" 
                     BorderBrush="{Binding IsExceedingDeadline, Converter={StaticResource BoolToRedBorderConverter}}" 
-                    BorderThickness="1" 
+                    BorderThickness="{Binding IsExceedingDeadline, Converter={StaticResource BoolToBorderThicknessConverter}}" 
                     Margin="2" 
                     Padding="5" 
                     CornerRadius="3"
-                    MouseMove="ProductBlock_MouseMove">
+                    MouseMove="ProductBlock_MouseMove"
+                    Cursor="Hand"
+                    ToolTip="{Binding TooltipText}">
                 <TextBlock Text="{Binding DisplayText}" FontWeight="Bold" Foreground="DarkSlateGray"/>
             </Border>
         </DataTemplate>
