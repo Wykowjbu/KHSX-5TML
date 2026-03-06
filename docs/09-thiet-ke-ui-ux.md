@@ -28,3 +28,4 @@ Có chổ để xoá cái hàng đó, có nút thêm hàng,
 double click vào hàng để mở popup để chỉnh sửa số người trong ca và mặc định bao nhiêu phút
 
 Mỗi cell sẽ chứa số người trong ca và số phút ( double click vào cell để chỉnh sửa riêng cho ngày đó ca đó, chỉnh sô người, số phút làm , khi đc chỉnh thì nền của cell sẽ khác các cell khác)
+Khong cần quan tấm yếu tố tôngt capa ngày đó, chỉ quan tâm ca A ngyaf đó hoặc ca B ngyaf đó thôi. nó giống thiết kế hiện tại tuy nhiên phải tách ra không còn dùng tổng nữa. giống kiểu mỗi ca là mỗi line riêng biệt
