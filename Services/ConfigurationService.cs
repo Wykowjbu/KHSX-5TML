@@ -1,30 +1,26 @@
 using KHSX.Models;
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Collections.ObjectModel;
+using System.Linq;
 
 namespace KHSX.Services
 {
     public class ConfigurationService
     {
-        private const string ConfigFileName = "production_config.json";
-
-        public class ProductionConfig
+        public class FactoryConfig
         {
-            public DateTime StartDate { get; set; }
-            public DateTime DeadlineDate { get; set; }
-            public List<LineConfig> Lines { get; set; } = new();
+            public DateTime StartDate { get; set; } = DateTime.Today;
+            public DateTime DeadlineDate { get; set; } = DateTime.Today.AddDays(7);
+            public List<RowConfig> Rows { get; set; } = new();
         }
 
-        public class LineConfig
+        public class RowConfig
         {
-            public string LineName { get; set; }
-            public ShiftData DefaultShiftA { get; set; } = new();
-            public ShiftData DefaultShiftB { get; set; } = new();
+            public string RowName { get; set; } = string.Empty;
+            public string ParentLineName { get; set; } = string.Empty;
+            public string ShiftName { get; set; } = string.Empty;
+            public ShiftData DefaultConfig { get; set; } = new();
             public List<DayCellConfig> Days { get; set; } = new();
         }
 
@@ -32,84 +28,55 @@ namespace KHSX.Services
         {
             public DateTime Date { get; set; }
             public bool HasCustomConfig { get; set; }
-            public ShiftData ShiftA { get; set; } = new();
-            public ShiftData ShiftB { get; set; } = new();
+            public ShiftData Config { get; set; } = new();
         }
 
         public class ShiftData
         {
-            public double Workers { get; set; }
-            public double Minutes { get; set; }
+            public double Workers { get; set; } = 1;
+            public double Minutes { get; set; } = 480;
         }
 
-        public void SaveConfiguration(DateTime startDate, DateTime deadlineDate, IEnumerable<ProductionLine> lines)
+        public void SaveConfiguration(DateTime startDate, DateTime deadlineDate, IEnumerable<ShiftRow> rows)
         {
-            var config = new ProductionConfig
+            var config = new FactoryConfig
             {
                 StartDate = startDate,
                 DeadlineDate = deadlineDate,
-                Lines = lines.Select(line => new LineConfig
+                Rows = rows.Select(row => new RowConfig
                 {
-                    LineName = line.LineName,
-                    DefaultShiftA = new ShiftData
+                    RowName = row.RowName,
+                    ParentLineName = row.ParentLineName,
+                    ShiftName = row.ShiftName,
+                    DefaultConfig = new ShiftData
                     {
-                        Workers = line.DefaultShiftA.Workers,
-                        Minutes = line.DefaultShiftA.Minutes
+                        Workers = row.DefaultConfig.Workers,
+                        Minutes = row.DefaultConfig.Minutes
                     },
-                    DefaultShiftB = new ShiftData
-                    {
-                        Workers = line.DefaultShiftB.Workers,
-                        Minutes = line.DefaultShiftB.Minutes
-                    },
-                    Days = line.Days.Select(day => new DayCellConfig
+                    Days = row.Days.Select(day => new DayCellConfig
                     {
                         Date = day.Date,
                         HasCustomConfig = day.HasCustomConfig,
-                        ShiftA = new ShiftData
+                        Config = new ShiftData
                         {
-                            Workers = day.ShiftA.Workers,
-                            Minutes = day.ShiftA.Minutes
-                        },
-                        ShiftB = new ShiftData
-                        {
-                            Workers = day.ShiftB.Workers,
-                            Minutes = day.ShiftB.Minutes
+                            Workers = day.Config.Workers,
+                            Minutes = day.Config.Minutes
                         }
                     }).ToList()
                 }).ToList()
             };
 
-            var options = new JsonSerializerOptions
-            {
-                WriteIndented = true,
-                Converters = { new JsonStringEnumConverter() }
-            };
-
-            var json = JsonSerializer.Serialize(config, options);
-            File.WriteAllText(ConfigFileName, json);
+            JsonStorage.Save("factory/lines.json", config);
         }
 
-        public ProductionConfig LoadConfiguration()
+        public FactoryConfig LoadConfiguration()
         {
-            if (!File.Exists(ConfigFileName))
-                return null;
-
-            try
-            {
-                var json = File.ReadAllText(ConfigFileName);
-                var options = new JsonSerializerOptions
-                {
-                    Converters = { new JsonStringEnumConverter() }
-                };
-                return JsonSerializer.Deserialize<ProductionConfig>(json, options);
-            }
-            catch
-            {
-                return null;
-            }
+            var config = JsonStorage.Load<FactoryConfig>("factory/lines.json");
+            if (config?.Rows == null || config.Rows.Count == 0) return null;
+            return config;
         }
 
-        public void ApplyConfiguration(ProductionConfig config, ObservableCollection<ProductionLine> lines, Action<DateTime> setStartDate, Action<DateTime> setDeadlineDate)
+        public void ApplyConfiguration(FactoryConfig config, ObservableCollection<ShiftRow> rows, Action<DateTime> setStartDate, Action<DateTime> setDeadlineDate)
         {
             if (config == null)
                 return;
@@ -117,30 +84,31 @@ namespace KHSX.Services
             setStartDate(config.StartDate);
             setDeadlineDate(config.DeadlineDate);
 
-            // Clear existing lines
-            lines.Clear();
+            // Clear existing rows
+            rows.Clear();
 
-            // Recreate lines from config
-            foreach (var lineConfig in config.Lines)
+            // Recreate rows from config
+            foreach (var rowConfig in config.Rows)
             {
-                var line = new ProductionLine(lineConfig.LineName);
-                line.DefaultShiftA.Workers = lineConfig.DefaultShiftA.Workers;
-                line.DefaultShiftA.Minutes = lineConfig.DefaultShiftA.Minutes;
-                line.DefaultShiftB.Workers = lineConfig.DefaultShiftB.Workers;
-                line.DefaultShiftB.Minutes = lineConfig.DefaultShiftB.Minutes;
+                var row = new ShiftRow(rowConfig.ParentLineName, rowConfig.ShiftName);
+                if (!string.IsNullOrEmpty(rowConfig.RowName))
+                {
+                    row.RowName = rowConfig.RowName;
+                }
                 
-                foreach (var dayConfig in lineConfig.Days)
+                row.DefaultConfig.Workers = rowConfig.DefaultConfig.Workers;
+                row.DefaultConfig.Minutes = rowConfig.DefaultConfig.Minutes;
+                
+                foreach (var dayConfig in rowConfig.Days)
                 {
                     var day = new DayCell(dayConfig.Date);
                     day.HasCustomConfig = dayConfig.HasCustomConfig;
-                    day.ShiftA.Workers = dayConfig.ShiftA.Workers;
-                    day.ShiftA.Minutes = dayConfig.ShiftA.Minutes;
-                    day.ShiftB.Workers = dayConfig.ShiftB.Workers;
-                    day.ShiftB.Minutes = dayConfig.ShiftB.Minutes;
-                    line.Days.Add(day);
+                    day.Config.Workers = dayConfig.Config.Workers;
+                    day.Config.Minutes = dayConfig.Config.Minutes;
+                    row.Days.Add(day);
                 }
                 
-                lines.Add(line);
+                rows.Add(row);
             }
         }
     }

@@ -16,7 +16,13 @@ namespace KHSX.Models
         private string sourceId = string.Empty;
 
         [ObservableProperty]
-        private string code = string.Empty; // Mã sản phẩm
+        private string code = string.Empty; // Mã sản phẩm (ví dụ: ProductGroup)
+
+        [ObservableProperty]
+        private string productionGroup = string.Empty; // Mã Gr.xxx
+
+        [ObservableProperty]
+        private string functionName = string.Empty; // Tên fuction từ cấu hình Groups (Marketing)
 
         [ObservableProperty]
         private double totalMinutesRequired; // Tổng số phút yêu cầu ban đầu của cả Item
@@ -31,13 +37,58 @@ namespace KHSX.Models
         private bool isExceedingDeadline; // Đánh dấu khối này có vượt qua deadline không
 
         // Dùng để identify block này khi kéo thả
-        public Guid Id { get; } = Guid.NewGuid();
+        public Guid Id { get; set; } = Guid.NewGuid();
 
         // Thuộc tính để nhận diện block gốc (danh sách chờ) hay đoạn cắt ra (trên lưới)
         public Guid? ParentId { get; set; }
+
+        public string DisplayColorHex
+        {
+            get
+            {
+                if (DisplayColor is SolidColorBrush solidBrush)
+                    return solidBrush.Color.ToString();
+                return "#FFADD8E6"; // Default LightBlue
+            }
+        }
+
+        public ProductBlock() { }
+
+        public ProductBlock(BlockData data)
+        {
+            Id = data.BlockId != Guid.Empty ? data.BlockId : Guid.NewGuid();
+            ParentId = data.ParentId;
+            SourceId = data.SourceId ?? string.Empty;
+            Code = data.GroupId ?? string.Empty;
+            ProductionGroup = data.ProductionGroup ?? string.Empty;
+            FunctionName = data.FunctionName ?? string.Empty;
+            TotalMinutesRequired = data.TotalMinutesRequired;
+            AllocatedMinutes = data.AllocatedMinutes;
+            
+            if (!string.IsNullOrEmpty(data.DisplayColorHex))
+            {
+                try
+                {
+                    var color = (Color)ColorConverter.ConvertFromString(data.DisplayColorHex);
+                    DisplayColor = new SolidColorBrush(color);
+                }
+                catch
+                {
+                    DisplayColor = Brushes.LightBlue;
+                }
+            }
+        }
         
         // Tên hiển thị trên lưới hoặc trên block chờ - làm tròn để tránh số .99
-        public string DisplayText => $"{Code} ({AllocatedMinutes:0.##}m)";
+        public string DisplayText
+        {
+            get
+            {
+                if (!string.IsNullOrEmpty(FunctionName))
+                    return $"{FunctionName}\n{Code}\n({ProductionGroup})\n{AllocatedMinutes:0.##}m";
+                return $"{Code}\n({ProductionGroup})\n{AllocatedMinutes:0.##}m";
+            }
+        }
 
         /// <summary>
         /// Tooltip hiển thị thông tin chi tiết cho block
@@ -96,6 +147,16 @@ namespace KHSX.Models
             OnPropertyChanged(nameof(TooltipText));
         }
 
+        partial void OnFunctionNameChanged(string value)
+        {
+            OnPropertyChanged(nameof(DisplayText));
+        }
+
+        partial void OnProductionGroupChanged(string value)
+        {
+            OnPropertyChanged(nameof(DisplayText));
+        }
+
         public ProductBlock CloneWithSplit(double minutesToSplit)
         {
             return new ProductBlock
@@ -103,6 +164,8 @@ namespace KHSX.Models
                 ParentId = this.ParentId ?? this.Id,
                 SourceId = this.SourceId,
                 Code = this.Code,
+                ProductionGroup = this.ProductionGroup,
+                FunctionName = this.FunctionName,
                 TotalMinutesRequired = this.TotalMinutesRequired,
                 AllocatedMinutes = Math.Round(minutesToSplit, 2),
                 DisplayColor = this.DisplayColor

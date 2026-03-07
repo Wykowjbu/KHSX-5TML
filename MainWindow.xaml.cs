@@ -15,6 +15,369 @@ namespace KHSX
         public MainWindow()
         {
             InitializeComponent();
+            
+            if (this.DataContext is MainViewModel vm)
+            {
+                vm.RequestDeadlineDialog += ShowDeadlineConfigDialog;
+                vm.RequestSelectGroupDialog += ShowSelectCurrentGroupDialog;
+                vm.RequestConfigGroupsDialog += ShowConfigGroupsDialog;
+            }
+        }
+
+        private void ShowConfigGroupsDialog()
+        {
+            var groups = Services.JsonStorage.Load<System.Collections.Generic.List<ProductGroupData>>("productGroups.json");
+            if (groups == null || groups.Count == 0)
+            {
+                MessageBox.Show("Chưa có dữ liệu Marketing. Vui lòng Import Marketing (Bước 1) trước.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var dialog = new Window
+            {
+                Title = "Cấu Hình Product Groups",
+                Width = 600,
+                Height = 520,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.CanResize,
+                MinHeight = 300
+            };
+
+            var rootPanel = new DockPanel { Margin = new Thickness(20) };
+
+            // Header info - docked top
+            var topPanel = new StackPanel { Margin = new Thickness(0, 0, 0, 5) };
+            DockPanel.SetDock(topPanel, Dock.Top);
+
+            var infoText = new TextBlock
+            {
+                Text = "Cập nhật Tên hiển thị và Production Group (Gr.xxx) mặc định cho mỗi nhóm sản phẩm.",
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+            topPanel.Children.Add(infoText);
+
+            var headerRow = new Grid { Margin = new Thickness(0, 0, 0, 5) };
+            headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.5, GridUnitType.Star) });
+            headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
+            headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.5, GridUnitType.Star) });
+            
+            var h1 = new TextBlock { Text = "Build Group", FontWeight = FontWeights.Bold };
+            var h2 = new TextBlock { Text = "fuction", FontWeight = FontWeights.Bold };
+            var h3 = new TextBlock { Text = "Gr.xxx Mặc Định", FontWeight = FontWeights.Bold };
+            Grid.SetColumn(h1, 0); Grid.SetColumn(h2, 1); Grid.SetColumn(h3, 2);
+            headerRow.Children.Add(h1); headerRow.Children.Add(h2); headerRow.Children.Add(h3);
+            topPanel.Children.Add(headerRow);
+            rootPanel.Children.Add(topPanel);
+
+            var gridPanel = new Grid();
+            gridPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.5, GridUnitType.Star) });
+            gridPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
+            gridPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.5, GridUnitType.Star) });
+
+            var nameBoxes = new System.Collections.Generic.Dictionary<string, TextBox>();
+            var groupBoxes = new System.Collections.Generic.Dictionary<string, ComboBox>();
+
+            // Lấy danh sách các Gr.xxx có thể có từ Products.json
+            var products = Services.JsonStorage.Load<System.Collections.Generic.List<ProductData>>("products.json");
+            var availableGr = new System.Collections.Generic.List<string> { "" }; // Option rỗng
+            if (products != null)
+            {
+                var allGrs = products.SelectMany(p => p.QuantitiesByGroup.Keys).Distinct().OrderBy(g => g);
+                availableGr.AddRange(allGrs);
+            }
+
+            int rowIdx = 0;
+            foreach (var group in groups)
+            {
+                gridPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+                var idLabel = new TextBlock { Text = group.GroupId, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 5, 10, 5) };
+                Grid.SetRow(idLabel, rowIdx);
+                Grid.SetColumn(idLabel, 0);
+                gridPanel.Children.Add(idLabel);
+
+                var nameBox = new TextBox { Text = group.Name, Margin = new Thickness(0, 5, 10, 5), Padding = new Thickness(2) };
+                nameBoxes[group.GroupId] = nameBox;
+                Grid.SetRow(nameBox, rowIdx);
+                Grid.SetColumn(nameBox, 1);
+                gridPanel.Children.Add(nameBox);
+
+                var defaultGroupBox = new ComboBox 
+                { 
+                    Margin = new Thickness(0, 5, 0, 5), 
+                    Padding = new Thickness(2),
+                    ItemsSource = availableGr
+                };
+                
+                // Mặc định chọn Gr lớn nhất nếu chưa có
+                if (string.IsNullOrEmpty(group.ProductionGroup) && products != null)
+                {
+                    var groupProducts = products.Where(p => p.GroupId == group.GroupId).ToList();
+                    string maxGr = "";
+                    
+                    var allGroupKeys = groupProducts.SelectMany(p => p.QuantitiesByGroup.Keys)
+                                                    .Where(k => !string.IsNullOrEmpty(k))
+                                                    .Distinct()
+                                                    .ToList();
+                    if (allGroupKeys.Any())
+                    {
+                        // Sắp xếp giảm dần theo chuỗi (VD: Gr.289 đứng trước Gr.284)
+                        maxGr = allGroupKeys.OrderByDescending(k => k).First();
+                    }
+                    
+                    defaultGroupBox.SelectedItem = maxGr;
+                }
+                else
+                {
+                    defaultGroupBox.SelectedItem = group.ProductionGroup;
+                }
+                
+                groupBoxes[group.GroupId] = defaultGroupBox;
+                Grid.SetRow(defaultGroupBox, rowIdx);
+                Grid.SetColumn(defaultGroupBox, 2);
+                gridPanel.Children.Add(defaultGroupBox);
+
+                rowIdx++;
+            }
+
+            var scrollView = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+            scrollView.Content = gridPanel;
+
+            // Button panel - docked bottom
+            var buttonPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 10, 0, 0) };
+            DockPanel.SetDock(buttonPanel, Dock.Bottom);
+            
+            var saveBtn = new Button { Content = "Lưu Cập Nhật", Width = 100, Height = 30, Margin = new Thickness(0, 0, 10, 0), Background = new SolidColorBrush(Color.FromRgb(33, 150, 243)), Foreground = Brushes.White };
+            saveBtn.Click += (s, e) =>
+            {
+                foreach (var group in groups)
+                {
+                    if (nameBoxes.TryGetValue(group.GroupId, out var nb)) group.Name = nb.Text;
+                    if (groupBoxes.TryGetValue(group.GroupId, out var cb)) 
+                    {
+                        group.ProductionGroup = cb.SelectedItem as string ?? "";
+                    }
+                }
+                Services.JsonStorage.Save("productGroups.json", groups);
+                MessageBox.Show("Đã lưu cấu hình product groups!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
+                dialog.DialogResult = true;
+            };
+
+            var cancelBtn = new Button { Content = "Hủy", Width = 80, Height = 30 };
+            cancelBtn.Click += (s, e) => dialog.DialogResult = false;
+
+            buttonPanel.Children.Add(saveBtn);
+            buttonPanel.Children.Add(cancelBtn);
+            rootPanel.Children.Add(buttonPanel);
+            rootPanel.Children.Add(scrollView);
+
+            dialog.Content = rootPanel;
+            dialog.ShowDialog();
+        }
+
+        private void ShowSelectCurrentGroupDialog()
+        {
+            var groups = Services.JsonStorage.Load<System.Collections.Generic.List<ProductGroupData>>("productGroups.json");
+            if (groups == null || groups.Count == 0)
+            {
+                MessageBox.Show("Chưa có dữ liệu Marketing. Vui lòng Import Marketing lại.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var dialog = new Window
+            {
+                Title = "Chọn Dòng Group Sản Xuất Hiện Tại (Current Group)",
+                Width = 420,
+                SizeToContent = SizeToContent.Height,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize
+            };
+
+            var rootPanel = new DockPanel { Margin = new Thickness(20) };
+
+            // Button panel - docked bottom
+            var buttonPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 15, 0, 0) };
+            DockPanel.SetDock(buttonPanel, Dock.Bottom);
+            
+            var saveBtn = new Button { Content = "Xác nhận & Lưu", Width = 120, Height = 30, Margin = new Thickness(0, 0, 10, 0), Background = new SolidColorBrush(Color.FromRgb(33, 150, 243)), Foreground = Brushes.White };
+            var cancelBtn = new Button { Content = "Hủy", Width = 80, Height = 30 };
+            buttonPanel.Children.Add(saveBtn);
+            buttonPanel.Children.Add(cancelBtn);
+            rootPanel.Children.Add(buttonPanel);
+
+            // Content
+            var contentPanel = new StackPanel();
+            DockPanel.SetDock(contentPanel, Dock.Top);
+
+            var infoText = new TextBlock
+            {
+                Text = "Vui lòng chọn Group (Gr.xxx) hiện tại mà MES đang chạy để hệ thống làm cơ sở tính toán Open Minutes. Thiết lập này sẽ quyết định tính năng cắt gọt deadline.",
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 15),
+                Foreground = Brushes.DarkBlue
+            };
+            contentPanel.Children.Add(infoText);
+
+            var comboBox = new ComboBox
+            {
+                Height = 30,
+                Margin = new Thickness(0, 0, 0, 5),
+                DisplayMemberPath = "Name",
+                SelectedValuePath = "GroupId",
+                ItemsSource = groups
+            };
+
+            // Load existing setting to pre-select
+            var settings = Services.JsonStorage.Load<SettingsData>("settings.json") ?? new SettingsData();
+            if (!string.IsNullOrEmpty(settings.CurrentMESGroup))
+            {
+                comboBox.SelectedValue = settings.CurrentMESGroup;
+            }
+            else if (groups.Count > 0)
+            {
+                comboBox.SelectedIndex = 0;
+            }
+
+            contentPanel.Children.Add(comboBox);
+            rootPanel.Children.Add(contentPanel);
+
+            saveBtn.Click += (s, e) =>
+            {
+                if (comboBox.SelectedValue != null)
+                {
+                    settings.CurrentMESGroup = comboBox.SelectedValue.ToString() ?? "";
+                    Services.JsonStorage.Save("settings.json", settings);
+                    
+                    MessageBox.Show("Đã lưu Current Group!\n\nHãy tiếp tục bước Thiết Lập Deadline và Import MES.", "Thành công", MessageBoxButton.OK, MessageBoxImage.Information);
+                    dialog.DialogResult = true;
+                }
+            };
+            cancelBtn.Click += (s, e) => dialog.DialogResult = false;
+
+            dialog.Content = rootPanel;
+            dialog.ShowDialog();
+        }
+
+        private void ShowDeadlineConfigDialog()
+        {
+            // Đọc dữ liệu Product groups để hiển thị
+            var groups = Services.JsonStorage.Load<System.Collections.Generic.List<ProductGroupData>>("productGroups.json");
+            if (groups == null || groups.Count == 0)
+            {
+                MessageBox.Show("Chưa có dữ liệu Marketing. Vui lòng Import Marketing (Bước 1) trước.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var dialog = new Window
+            {
+                Title = "Thiết Lập Deadline Cho Group",
+                Width = 420,
+                Height = 500,
+                MinHeight = 250,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.CanResize
+            };
+
+            var rootPanel = new DockPanel { Margin = new Thickness(20) };
+
+            // Top info
+            var infoText = new TextBlock
+            {
+                Text = "Nhập ngày deadline cho từng Production Group. Nếu bỏ trống, hệ thống sẽ sử dụng Deadline Tổng.",
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+            DockPanel.SetDock(infoText, Dock.Top);
+            rootPanel.Children.Add(infoText);
+
+            var scrollView = new ScrollViewer { VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+            var gridPanel = new Grid();
+            gridPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            gridPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
+
+            // Load existing deadlines
+            var existingDeadlines = Services.JsonStorage.Load<System.Collections.Generic.List<DeadlineData>>("deadlines.json") 
+                ?? new System.Collections.Generic.List<DeadlineData>();
+
+            // Lấy danh sách Gr.xxx duy nhất từ nhóm và từ sản phẩm
+            var products = Services.JsonStorage.Load<System.Collections.Generic.List<ProductData>>("products.json");
+            var allGroupsFromProducts = products?.SelectMany(p => p.QuantitiesByGroup.Keys) ?? System.Linq.Enumerable.Empty<string>();
+
+            var productionGroups = groups.Select(g => g.ProductionGroup)
+                                          .Concat(allGroupsFromProducts)
+                                          .Where(g => !string.IsNullOrWhiteSpace(g))
+                                          .Distinct()
+                                          .OrderBy(g => g)
+                                          .ToList();
+
+            var datePickers = new System.Collections.Generic.Dictionary<string, DatePicker>();
+
+            int rowIdx = 0;
+            foreach (var grp in productionGroups)
+            {
+                gridPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+                var groupLabel = new TextBlock { Text = grp, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 5, 10, 5), FontWeight = FontWeights.Bold };
+                Grid.SetRow(groupLabel, rowIdx);
+                Grid.SetColumn(groupLabel, 0);
+                gridPanel.Children.Add(groupLabel);
+
+                var datePicker = new DatePicker { Margin = new Thickness(0, 5, 0, 5) };
+                var existing = existingDeadlines.Find(d => d.GroupNumber == grp);
+                if (existing != null)
+                {
+                    datePicker.SelectedDate = existing.Deadline;
+                }
+                datePickers[grp] = datePicker;
+                Grid.SetRow(datePicker, rowIdx);
+                Grid.SetColumn(datePicker, 1);
+                gridPanel.Children.Add(datePicker);
+
+                rowIdx++;
+            }
+
+            scrollView.Content = gridPanel;
+
+            // Button panel - docked bottom
+            var buttonPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 10, 0, 0) };
+            DockPanel.SetDock(buttonPanel, Dock.Bottom);
+            
+            var saveBtn = new Button { Content = "Lưu Deadlines", Width = 100, Height = 30, Margin = new Thickness(0, 0, 10, 0), Background = new SolidColorBrush(Color.FromRgb(33, 150, 243)), Foreground = Brushes.White };
+            saveBtn.Click += (s, e) =>
+            {
+                var newDeadlines = new System.Collections.Generic.List<DeadlineData>();
+                foreach (var kvp in datePickers)
+                {
+                    if (kvp.Value.SelectedDate.HasValue)
+                    {
+                        newDeadlines.Add(new DeadlineData { GroupNumber = kvp.Key, Deadline = kvp.Value.SelectedDate.Value });
+                    }
+                }
+                Services.JsonStorage.Save("deadlines.json", newDeadlines);
+                MessageBox.Show("Đã lưu thiết lập deadline thành công!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
+                dialog.DialogResult = true;
+            };
+
+            var cancelBtn = new Button { Content = "Hủy", Width = 80, Height = 30 };
+            cancelBtn.Click += (s, e) => dialog.DialogResult = false;
+
+            buttonPanel.Children.Add(saveBtn);
+            buttonPanel.Children.Add(cancelBtn);
+            rootPanel.Children.Add(buttonPanel);
+            rootPanel.Children.Add(scrollView);
+
+            dialog.Content = rootPanel;
+            dialog.ShowDialog();
+            
+            // Refresh lại các vạch đỏ deadline trên grid
+            if (this.DataContext is MainViewModel vm)
+            {
+                vm.RefreshDeadlines();
+            }
         }
 
         private void ProductBlock_MouseMove(object sender, MouseEventArgs e)
@@ -47,11 +410,11 @@ namespace KHSX
                 {
                     if (element.Tag is DayCell targetDay)
                     {
-                        var targetLine = FindParentLine(element);
-                        if (targetLine != null)
+                        var targetRow = FindParentRow(element);
+                        if (targetRow != null)
                         {
                             var vm = this.DataContext as MainViewModel;
-                            vm?.HandleDrop(block, targetDay, targetLine);
+                            vm?.HandleDrop(block, targetDay, targetRow);
                             vm?.SaveConfigurationCommand.Execute(null);
                         }
                     }
@@ -69,83 +432,37 @@ namespace KHSX
 
         private void LineName_DoubleClick(object sender, MouseButtonEventArgs e)
         {
-            if (sender is TextBlock textBlock && textBlock.DataContext is ProductionLine line)
+            if (sender is TextBlock textBlock && textBlock.DataContext is ShiftRow row)
             {
-                ShowEditLineDialog(line);
+                ShowEditRowDialog(row);
             }
         }
 
         private void LineName_RightClick(object sender, MouseButtonEventArgs e)
         {
-            if (sender is Border border && border.Tag is ProductionLine line)
+            if (sender is Border border && border.Tag is ShiftRow row)
             {
-                ShowEditLineConfigDialog(line);
+                ShowEditRowConfigDialog(row);
             }
         }
 
-        private void ShowEditLineDialog(ProductionLine line)
+        private void ShowEditRowDialog(ShiftRow row)
         {
             var dialog = new Window
             {
-                Title = $"Cấu hình {line.LineName}",
+                Title = $"Cấu hình {row.RowName}",
                 Width = 500,
-                Height = 450,
+                SizeToContent = SizeToContent.Height,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 Owner = this,
                 ResizeMode = ResizeMode.NoResize
             };
 
-            var mainPanel = new StackPanel { Margin = new Thickness(20) };
+            var rootPanel = new DockPanel { Margin = new Thickness(20) };
 
-            // Line name section
-            var nameTitle = new TextBlock
-            {
-                Text = "TÊN LINE",
-                FontWeight = FontWeights.Bold,
-                FontSize = 14,
-                Margin = new Thickness(0, 0, 0, 10)
-            };
-            mainPanel.Children.Add(nameTitle);
-
-            var namePanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 20) };
-            namePanel.Children.Add(new TextBlock { Text = "Tên:", Width = 100, VerticalAlignment = VerticalAlignment.Center });
-            var nameBox = new TextBox
-            {
-                Width = 300,
-                Text = line.LineName,
-                FontSize = 14
-            };
-            namePanel.Children.Add(nameBox);
-            mainPanel.Children.Add(namePanel);
-
-            // Info text
-            var infoText = new TextBlock
-            {
-                Text = "CẤU HÌNH MẶC ĐỊNH CHO TẤT CẢ CÁC NGÀY TRONG LINE",
-                FontWeight = FontWeights.Bold,
-                TextWrapping = TextWrapping.Wrap,
-                Foreground = Brushes.DarkBlue,
-                Margin = new Thickness(0, 0, 0, 15),
-                FontSize = 12
-            };
-            mainPanel.Children.Add(infoText);
-
-            // Shift A
-            var shiftAPanel = CreateShiftPanel("Ca A (Mặc định)", line.DefaultShiftA);
-            mainPanel.Children.Add(shiftAPanel);
-            mainPanel.Children.Add(new Separator { Margin = new Thickness(0, 15, 0, 15) });
-
-            // Shift B
-            var shiftBPanel = CreateShiftPanel("Ca B (Mặc định)", line.DefaultShiftB);
-            mainPanel.Children.Add(shiftBPanel);
-            mainPanel.Children.Add(new Separator { Margin = new Thickness(0, 15, 0, 15) });
-
-            // Buttons
-            var buttonPanel = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                HorizontalAlignment = HorizontalAlignment.Right
-            };
+            // Button panel - docked bottom
+            var buttonPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
+            DockPanel.SetDock(buttonPanel, Dock.Bottom);
 
             var applyButton = new Button
             {
@@ -156,127 +473,123 @@ namespace KHSX
                 Background = new SolidColorBrush(Color.FromRgb(33, 150, 243)),
                 Foreground = Brushes.White
             };
+            var saveButton = new Button { Content = "Lưu", Width = 80, Height = 30, Margin = new Thickness(0, 0, 10, 0) };
+            var cancelButton = new Button { Content = "Hủy", Width = 80, Height = 30 };
+            buttonPanel.Children.Add(applyButton);
+            buttonPanel.Children.Add(saveButton);
+            buttonPanel.Children.Add(cancelButton);
+            rootPanel.Children.Add(buttonPanel);
+
+            // Content
+            var contentPanel = new StackPanel();
+
+            var nameTitle = new TextBlock { Text = "TÊN CA LÀM VIỆC", FontWeight = FontWeights.Bold, FontSize = 14, Margin = new Thickness(0, 0, 0, 10) };
+            contentPanel.Children.Add(nameTitle);
+
+            var namePanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 15) };
+            namePanel.Children.Add(new TextBlock { Text = "Tên:", Width = 100, VerticalAlignment = VerticalAlignment.Center });
+            var nameBox = new TextBox { Width = 300, Text = row.RowName, FontSize = 14 };
+            namePanel.Children.Add(nameBox);
+            contentPanel.Children.Add(namePanel);
+
+            var infoText = new TextBlock
+            {
+                Text = "CẤU HÌNH MẶC ĐỊNH CHO TẤT CẢ CÁC NGÀY TRONG CA LÀM VIỆC NÀY",
+                FontWeight = FontWeights.Bold,
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = Brushes.DarkBlue,
+                Margin = new Thickness(0, 0, 0, 15),
+                FontSize = 12
+            };
+            contentPanel.Children.Add(infoText);
+
+            var configPanel = CreateShiftPanel("Cấu hình ca", row.DefaultConfig);
+            contentPanel.Children.Add(configPanel);
+            contentPanel.Children.Add(new Separator { Margin = new Thickness(0, 10, 0, 0) });
+            rootPanel.Children.Add(contentPanel);
+
             applyButton.Click += (s, e) =>
             {
                 if (!string.IsNullOrWhiteSpace(nameBox.Text))
                 {
-                    line.LineName = nameBox.Text;
-                    line.ApplyDefaultShiftToAllDays();
+                    row.RowName = nameBox.Text;
+                    row.ApplyDefaultShiftToAllDays();
                     var vm = this.DataContext as MainViewModel;
                     vm?.SaveConfigurationCommand.Execute(null);
-                    MessageBox.Show($"Đã áp dụng cấu hình cho tất cả ngày trong {line.LineName}", "Thành công", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBox.Show($"Đã áp dụng cấu hình cho tất cả ngày trong {row.RowName}", "Thành công", MessageBoxButton.OK, MessageBoxImage.Information);
                     dialog.DialogResult = true;
                 }
-                else
-                {
-                    MessageBox.Show("Tên line không được để trống!", "Lỗi", MessageBoxButton.OK, MessageBoxImage.Warning);
-                }
-            };
-
-            var saveButton = new Button
-            {
-                Content = "Lưu",
-                Width = 80,
-                Height = 30,
-                Margin = new Thickness(0, 0, 10, 0)
+                else { MessageBox.Show("Tên ca không được để trống!", "Lỗi", MessageBoxButton.OK, MessageBoxImage.Warning); }
             };
             saveButton.Click += (s, e) =>
             {
                 if (!string.IsNullOrWhiteSpace(nameBox.Text))
                 {
-                    line.LineName = nameBox.Text;
+                    row.RowName = nameBox.Text;
                     var vm = this.DataContext as MainViewModel;
                     vm?.SaveConfigurationCommand.Execute(null);
                     dialog.DialogResult = true;
                 }
-                else
-                {
-                    MessageBox.Show("Tên line không được để trống!", "Lỗi", MessageBoxButton.OK, MessageBoxImage.Warning);
-                }
-            };
-
-            var cancelButton = new Button
-            {
-                Content = "Hủy",
-                Width = 80,
-                Height = 30
+                else { MessageBox.Show("Tên ca không được để trống!", "Lỗi", MessageBoxButton.OK, MessageBoxImage.Warning); }
             };
             cancelButton.Click += (s, e) => dialog.DialogResult = false;
 
-            buttonPanel.Children.Add(applyButton);
-            buttonPanel.Children.Add(saveButton);
-            buttonPanel.Children.Add(cancelButton);
-            mainPanel.Children.Add(buttonPanel);
-
-            dialog.Content = mainPanel;
+            dialog.Content = rootPanel;
             nameBox.Focus();
             nameBox.SelectAll();
             dialog.ShowDialog();
         }
 
-        private void ShowEditLineConfigDialog(ProductionLine line)
+        private void ShowEditRowConfigDialog(ShiftRow row)
         {
             var dialog = new Window
             {
-                Title = $"Cấu hình mặc định cho {line.LineName}",
+                Title = $"Cấu hình mặc định cho {row.RowName}",
                 Width = 450,
-                Height = 350,
+                SizeToContent = SizeToContent.Height,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 Owner = this,
                 ResizeMode = ResizeMode.NoResize
             };
 
-            var mainPanel = new StackPanel { Margin = new Thickness(20) };
+            var rootPanel = new DockPanel { Margin = new Thickness(20) };
 
-            // Info text
+            // Button panel - docked bottom
+            var buttonPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
+            DockPanel.SetDock(buttonPanel, Dock.Bottom);
+
+            var applyButton = new Button { Content = "Áp dụng cho tất cả", Width = 120, Height = 30, Margin = new Thickness(0, 0, 10, 0) };
+            var saveButton = new Button { Content = "Lưu", Width = 80, Height = 30, Margin = new Thickness(0, 0, 10, 0) };
+            var cancelButton = new Button { Content = "Hủy", Width = 80, Height = 30 };
+            buttonPanel.Children.Add(applyButton);
+            buttonPanel.Children.Add(saveButton);
+            buttonPanel.Children.Add(cancelButton);
+            rootPanel.Children.Add(buttonPanel);
+
+            // Content
+            var contentPanel = new StackPanel();
+
             var infoText = new TextBlock
             {
-                Text = "Cấu hình này sẽ áp dụng cho TẤT CẢ các ngày trong line (trừ các ngày đã custom riêng)",
+                Text = "Cấu hình này sẽ áp dụng cho TẤT CẢ các ngày trong ca (trừ các ngày đã custom riêng)",
                 TextWrapping = TextWrapping.Wrap,
                 Foreground = Brushes.DarkBlue,
-                Margin = new Thickness(0, 0, 0, 20),
+                Margin = new Thickness(0, 0, 0, 15),
                 FontStyle = FontStyles.Italic
             };
-            mainPanel.Children.Add(infoText);
+            contentPanel.Children.Add(infoText);
 
-            // Shift A
-            var shiftAPanel = CreateShiftPanel("Ca A (Mặc định)", line.DefaultShiftA);
-            mainPanel.Children.Add(shiftAPanel);
-            mainPanel.Children.Add(new Separator { Margin = new Thickness(0, 15, 0, 15) });
+            var configPanel = CreateShiftPanel("Cấu hình ca", row.DefaultConfig);
+            contentPanel.Children.Add(configPanel);
+            contentPanel.Children.Add(new Separator { Margin = new Thickness(0, 10, 0, 0) });
+            rootPanel.Children.Add(contentPanel);
 
-            // Shift B
-            var shiftBPanel = CreateShiftPanel("Ca B (Mặc định)", line.DefaultShiftB);
-            mainPanel.Children.Add(shiftBPanel);
-            mainPanel.Children.Add(new Separator { Margin = new Thickness(0, 15, 0, 15) });
-
-            // Buttons
-            var buttonPanel = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                HorizontalAlignment = HorizontalAlignment.Right
-            };
-
-            var applyButton = new Button
-            {
-                Content = "Áp dụng cho tất cả",
-                Width = 120,
-                Height = 30,
-                Margin = new Thickness(0, 0, 10, 0)
-            };
             applyButton.Click += (s, e) =>
             {
-                line.ApplyDefaultShiftToAllDays();
+                row.ApplyDefaultShiftToAllDays();
                 var vm = this.DataContext as MainViewModel;
                 vm?.SaveConfigurationCommand.Execute(null);
-                MessageBox.Show($"Đã áp dụng cấu hình cho tất cả ngày trong {line.LineName}", "Thành công", MessageBoxButton.OK, MessageBoxImage.Information);
-            };
-
-            var saveButton = new Button
-            {
-                Content = "Lưu",
-                Width = 80,
-                Height = 30,
-                Margin = new Thickness(0, 0, 10, 0)
+                MessageBox.Show($"Đã áp dụng cấu hình cho tất cả ngày trong {row.RowName}", "Thành công", MessageBoxButton.OK, MessageBoxImage.Information);
             };
             saveButton.Click += (s, e) =>
             {
@@ -284,160 +597,46 @@ namespace KHSX
                 vm?.SaveConfigurationCommand.Execute(null);
                 dialog.DialogResult = true;
             };
-
-            var cancelButton = new Button
-            {
-                Content = "Hủy",
-                Width = 80,
-                Height = 30
-            };
             cancelButton.Click += (s, e) => dialog.DialogResult = false;
 
-            buttonPanel.Children.Add(applyButton);
-            buttonPanel.Children.Add(saveButton);
-            buttonPanel.Children.Add(cancelButton);
-            mainPanel.Children.Add(buttonPanel);
-
-            dialog.Content = mainPanel;
-            dialog.ShowDialog();
-        }
-
-        private void ShowEditLineNameDialog(ProductionLine line)
-        {
-            var dialog = new Window
-            {
-                Title = "Chỉnh sửa tên Line",
-                Width = 350,
-                Height = 150,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                Owner = this,
-                ResizeMode = ResizeMode.NoResize
-            };
-
-            var grid = new Grid { Margin = new Thickness(20) };
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-            grid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(20) });
-            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-
-            // TextBox for line name
-            var namePanel = new StackPanel { Orientation = Orientation.Horizontal };
-            namePanel.Children.Add(new TextBlock { Text = "Tên Line:", Width = 80, VerticalAlignment = VerticalAlignment.Center });
-            var nameBox = new TextBox
-            {
-                Width = 200,
-                Text = line.LineName
-            };
-            namePanel.Children.Add(nameBox);
-            Grid.SetRow(namePanel, 0);
-            grid.Children.Add(namePanel);
-
-            // Buttons
-            var buttonPanel = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                HorizontalAlignment = HorizontalAlignment.Right
-            };
-            Grid.SetRow(buttonPanel, 2);
-
-            var saveButton = new Button
-            {
-                Content = "Lưu",
-                Width = 80,
-                Height = 30,
-                Margin = new Thickness(0, 0, 10, 0)
-            };
-            saveButton.Click += (s, e) =>
-            {
-                if (!string.IsNullOrWhiteSpace(nameBox.Text))
-                {
-                    line.LineName = nameBox.Text;
-                    var vm = this.DataContext as MainViewModel;
-                    vm?.SaveConfigurationCommand.Execute(null);
-                    dialog.DialogResult = true;
-                }
-                else
-                {
-                    MessageBox.Show("Tên line không được để trống!", "Lỗi", MessageBoxButton.OK, MessageBoxImage.Warning);
-                }
-            };
-
-            var cancelButton = new Button
-            {
-                Content = "Hủy",
-                Width = 80,
-                Height = 30
-            };
-            cancelButton.Click += (s, e) => dialog.DialogResult = false;
-
-            buttonPanel.Children.Add(saveButton);
-            buttonPanel.Children.Add(cancelButton);
-            grid.Children.Add(buttonPanel);
-
-            dialog.Content = grid;
-            nameBox.Focus();
-            nameBox.SelectAll();
+            dialog.Content = rootPanel;
             dialog.ShowDialog();
         }
 
         private void ShowEditShiftDialog(DayCell day)
         {
-            // Tìm line chứa day này
-            ProductionLine parentLine = null;
+            // Tìm row chứa day này
+            ShiftRow parentRow = null;
             var vm = this.DataContext as MainViewModel;
             if (vm != null)
             {
-                foreach (var line in vm.Lines)
+                foreach (var row in vm.Rows)
                 {
-                    if (line.Days.Contains(day))
+                    if (row.Days.Contains(day))
                     {
-                        parentLine = line;
+                        parentRow = row;
                         break;
                     }
                 }
             }
 
-            if (parentLine == null) return;
+            if (parentRow == null) return;
 
             var dialog = new Window
             {
-                Title = $"Chỉnh sửa ca làm việc - {day.Date:dd/MM/yyyy}",
+                Title = $"Chỉnh sửa cấu hình - {day.Date:dd/MM/yyyy}",
                 Width = 450,
-                Height = 400,
+                SizeToContent = SizeToContent.Height,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 Owner = this,
                 ResizeMode = ResizeMode.NoResize
             };
 
-            var mainPanel = new StackPanel { Margin = new Thickness(20) };
+            var rootPanel = new DockPanel { Margin = new Thickness(20) };
 
-            // Info text
-            var infoText = new TextBlock
-            {
-                Text = $"Chỉnh sửa riêng cho ngày này{(day.HasCustomConfig ? " (đang dùng cấu hình riêng)" : " (đang dùng cấu hình mặc định của line)")}",
-                TextWrapping = TextWrapping.Wrap,
-                Foreground = day.HasCustomConfig ? Brushes.Orange : Brushes.DarkGreen,
-                Margin = new Thickness(0, 0, 0, 15),
-                FontStyle = FontStyles.Italic,
-                FontWeight = FontWeights.Bold
-            };
-            mainPanel.Children.Add(infoText);
-
-            // Shift A
-            var shiftAPanel = CreateShiftPanel("Ca A", day.ShiftA);
-            mainPanel.Children.Add(shiftAPanel);
-            mainPanel.Children.Add(new Separator { Margin = new Thickness(0, 15, 0, 15) });
-
-            // Shift B
-            var shiftBPanel = CreateShiftPanel("Ca B", day.ShiftB);
-            mainPanel.Children.Add(shiftBPanel);
-            mainPanel.Children.Add(new Separator { Margin = new Thickness(0, 15, 0, 15) });
-
-            // Buttons
-            var buttonPanel = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                HorizontalAlignment = HorizontalAlignment.Right
-            };
+            // Button panel - docked bottom
+            var buttonPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
+            DockPanel.SetDock(buttonPanel, Dock.Bottom);
 
             // Reset button (only show if has custom config)
             if (day.HasCustomConfig)
@@ -453,52 +652,54 @@ namespace KHSX
                 };
                 resetButton.Click += (s, e) =>
                 {
-                    day.ShiftA.Workers = parentLine.DefaultShiftA.Workers;
-                    day.ShiftA.Minutes = parentLine.DefaultShiftA.Minutes;
-                    day.ShiftB.Workers = parentLine.DefaultShiftB.Workers;
-                    day.ShiftB.Minutes = parentLine.DefaultShiftB.Minutes;
+                    day.Config.Workers = parentRow.DefaultConfig.Workers;
+                    day.Config.Minutes = parentRow.DefaultConfig.Minutes;
                     day.HasCustomConfig = false;
                     vm?.SaveConfigurationCommand.Execute(null);
-                    MessageBox.Show("Đã reset về cấu hình mặc định của line", "Thành công", MessageBoxButton.OK, MessageBoxImage.Information);
+                    MessageBox.Show("Đã reset về cấu hình mặc định của ca", "Thành công", MessageBoxButton.OK, MessageBoxImage.Information);
                     dialog.DialogResult = true;
                 };
                 buttonPanel.Children.Add(resetButton);
             }
 
-            var saveButton = new Button
-            {
-                Content = "Lưu",
-                Width = 80,
-                Height = 30,
-                Margin = new Thickness(0, 0, 10, 0)
-            };
+            var saveButton = new Button { Content = "Lưu", Width = 80, Height = 30, Margin = new Thickness(0, 0, 10, 0) };
             saveButton.Click += (s, e) =>
             {
-                // Chỉ đánh dấu custom nếu giá trị KHÁC với default của line
                 bool isDifferent = 
-                    day.ShiftA.Workers != parentLine.DefaultShiftA.Workers ||
-                    day.ShiftA.Minutes != parentLine.DefaultShiftA.Minutes ||
-                    day.ShiftB.Workers != parentLine.DefaultShiftB.Workers ||
-                    day.ShiftB.Minutes != parentLine.DefaultShiftB.Minutes;
-
+                    day.Config.Workers != parentRow.DefaultConfig.Workers ||
+                    day.Config.Minutes != parentRow.DefaultConfig.Minutes;
                 day.HasCustomConfig = isDifferent;
                 vm?.SaveConfigurationCommand.Execute(null);
                 dialog.DialogResult = true;
             };
 
-            var cancelButton = new Button
-            {
-                Content = "Hủy",
-                Width = 80,
-                Height = 30
-            };
+            var cancelButton = new Button { Content = "Hủy", Width = 80, Height = 30 };
             cancelButton.Click += (s, e) => dialog.DialogResult = false;
 
             buttonPanel.Children.Add(saveButton);
             buttonPanel.Children.Add(cancelButton);
-            mainPanel.Children.Add(buttonPanel);
+            rootPanel.Children.Add(buttonPanel);
 
-            dialog.Content = mainPanel;
+            // Content
+            var contentPanel = new StackPanel();
+
+            var infoText = new TextBlock
+            {
+                Text = $"Chỉnh sửa riêng cho ô này{(day.HasCustomConfig ? " (đang dùng cấu hình riêng)" : " (đang dùng cấu hình mặc định của ca)")}",
+                TextWrapping = TextWrapping.Wrap,
+                Foreground = day.HasCustomConfig ? Brushes.Orange : Brushes.DarkGreen,
+                Margin = new Thickness(0, 0, 0, 15),
+                FontStyle = FontStyles.Italic,
+                FontWeight = FontWeights.Bold
+            };
+            contentPanel.Children.Add(infoText);
+
+            var configPanel = CreateShiftPanel("Cấu hình ca", day.Config);
+            contentPanel.Children.Add(configPanel);
+            contentPanel.Children.Add(new Separator { Margin = new Thickness(0, 10, 0, 0) });
+            rootPanel.Children.Add(contentPanel);
+
+            dialog.Content = rootPanel;
             dialog.ShowDialog();
         }
 
@@ -565,15 +766,15 @@ namespace KHSX
             return panel;
         }
 
-        // Hàm helper để tìm ProductionLine chứa DayCell đang được drop
-        private ProductionLine? FindParentLine(DependencyObject child)
+        // Hàm helper để tìm ShiftRow chứa DayCell đang được drop
+        private ShiftRow? FindParentRow(DependencyObject child)
         {
             DependencyObject parentObject = VisualTreeHelper.GetParent(child);
             while (parentObject != null)
             {
-                if (parentObject is FrameworkElement fe && fe.DataContext is ProductionLine line)
+                if (parentObject is FrameworkElement fe && fe.DataContext is ShiftRow row)
                 {
-                    return line;
+                    return row;
                 }
                 parentObject = VisualTreeHelper.GetParent(parentObject);
             }

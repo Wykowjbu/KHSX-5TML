@@ -49,11 +49,18 @@
         <!-- Header -->
         <Border Grid.Row="0" Background="#f0f0f0" BorderBrush="#ccc" BorderThickness="0,0,0,1">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0">
-                <Button Content="Import Excel (pivot openmin)" Command="{Binding ImportExcelCommand}" Padding="10,5" Margin="0,0,10,0"/>
+                <Button Content="1. Import Marketing" Command="{Binding ImportMarketingCommand}" Padding="10,5" Margin="0,0,10,0"/>
+                <Button Content="2. Thiết Lập Deadline" Command="{Binding ConfigDeadlinesCommand}" Padding="10,5" Margin="0,0,10,0"/>
+                <Button Content="Cấu Hình Groups (Marketing)" Command="{Binding ConfigGroupsCommand}" Padding="10,5" Margin="0,0,10,0" Background="#FF9800" Foreground="White" ToolTip="Đổi tên và thiết lập Group sản xuất mặc định"/>
+                <Button Content="3. Import MES -> Tạo Block" Command="{Binding ImportMESCommand}" Padding="10,5" Margin="0,0,10,0"/>
+                
+                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="10,0"/>
                 <Button Content="Lưu cấu hình" Command="{Binding SaveConfigurationCommand}" Padding="10,5" Margin="0,0,10,0"/>
                 <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="10,0"/>
                 <Button Content="➕ Thêm Line" Command="{Binding AddLineCommand}" Padding="10,5" Margin="0,0,20,0" Background="#4CAF50" Foreground="White"/>
-                <TextBlock Text="Ngày Deadline: " VerticalAlignment="Center" FontWeight="Bold"/>
+                <TextBlock Text="Ngày Bắt Đầu: " VerticalAlignment="Center" FontWeight="Bold"/>
+                <DatePicker SelectedDate="{Binding StartDate, Mode=TwoWay}" Width="150" Margin="5,0"/>
+                <TextBlock Text="Ngày Kết Thúc (Deadline Tổng): " VerticalAlignment="Center" FontWeight="Bold"/>
                 <DatePicker SelectedDate="{Binding DeadlineDate, Mode=TwoWay}" Width="150" Margin="5,0"/>
             </StackPanel>
         </Border>
@@ -112,12 +119,12 @@
 
             <!-- Right Panel: Gantt Chart -->
             <ScrollViewer Grid.Column="2" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-                <ItemsControl ItemsSource="{Binding Lines}" Margin="10">
+                <ItemsControl ItemsSource="{Binding Rows}" Margin="10">
                     <ItemsControl.ItemTemplate>
-                        <DataTemplate DataType="{x:Type models:ProductionLine}">
+                        <DataTemplate DataType="{x:Type models:ShiftRow}">
                             <Grid Margin="0,0,0,10">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="80"/>
+                                    <ColumnDefinition Width="120"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
 
@@ -130,9 +137,12 @@
                                             <RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
                                         
-                                        <TextBlock Grid.Row="0" Text="{Binding LineName}" 
+                                        <TextBlock Grid.Row="0" Text="{Binding RowName}" 
                                                    VerticalAlignment="Center" HorizontalAlignment="Center" 
-                                                   FontWeight="Bold" 
+                                                   FontWeight="Bold"
+                                                   FontSize="11"
+                                                   TextWrapping="Wrap"
+                                                   TextAlignment="Center"
                                                    MouseLeftButtonDown="LineName_DoubleClick"
                                                    Cursor="Hand"
                                                    ToolTip="Click để đổi tên và cấu hình ca"/>
