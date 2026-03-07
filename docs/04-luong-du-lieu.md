@@ -8,13 +8,17 @@ Hệ thống lưu:
 
 - sản phẩm (cột A)
 - nhóm sản phẩm (cột K)
+- minutesPerProduct (cột L)
 - tên function (cột M)
-- **số lượng sản phẩm** theo từng Gr.xxx (các cột E–J: giá trị dưới header mỗi Gr là **số lượng**, không phải số phút)
-- minutesPerProduct (nếu có) — dùng để tính: `tổng phút = số lượng × minutesPerProduct`
+- **số lượng sản phẩm** theo từng Gr.xxx (cột E–J: giá trị dưới header mỗi Gr là **số lượng**)
+- **tổng số lượng** cộng dồn tất cả Gr.xxx
 
-**Mục đích chính của import Marketing:** xác định sản phẩm nào thuộc nhóm sản phẩm nào, và sản phẩm đó ở Gr.xxx nào. Hệ thống lưu tổng số lượng cộng dồn tất cả Gr.xxx (không cần tách từng Gr.xxx).
+**Mục đích:** Xác định sản phẩm thuộc nhóm nào, số lượng theo từng Gr.xxx và tổng, phục vụ tính toán và gán Gr.xxx mặc định cho ProductGroup (Gr.xxx lớn nhất).
 
-**Khi import lại file Marketing:** dữ liệu cũ được cập nhật (merge), Gr.xxx mới được thêm vào. Sản phẩm đã tồn tại chỉ cập nhật số liệu mới, không xóa dữ liệu cũ nếu sản phẩm không có trong file mới.
+**Khi import lại file Marketing (merge):**
+- Gr.xxx **có trong file mới:** cập nhật số lượng theo Gr.xxx đó; đồng thời cập nhật lại tổng.
+- Gr.xxx **không có trong file mới:** giữ nguyên số lượng cũ (vd: sản phẩm có Gr.284 và Gr.285, file mới chỉ có Gr.285 → Gr.284 giữ nguyên).
+- Sản phẩm **không có trong file mới:** giữ nguyên dữ liệu cũ (không xóa).
 
 ---
 
@@ -43,7 +47,9 @@ Hệ thống **tự động** match productId (MES ↔ Marketing), sau đó gom 
 
 Bước 5
 
-Hệ thống gom dữ liệu theo ProductGroup để tạo block. Mỗi **ProductGroup** tương ứng **một block**; tổng độ dài block = tổng số phút còn lại (open minutes) của nhóm. Nếu sản phẩm trong nhóm nằm ở nhiều Gr.xxx thì vẫn chỉ quan tâm **tổng** phút của nhóm (lưu tổng cộng dồn, không tách từng Gr.xxx). Có thể click vào block để chỉnh deadline riêng (custom deadline) nếu khác deadline của Gr.xxx. Block gắn với ProductionGroup (Gr.xxx mà nhóm đó đã đến) để kiểm tra deadline.
+Hệ thống gom dữ liệu theo ProductGroup để tạo block. Mỗi **ProductGroup** tương ứng **một block**; độ dài block = tổng **open minutes** của nhóm (từ MES). Block gắn với **ProductionGroup** (Gr.xxx của nhóm, xem mô hình nghiệp vụ) để kiểm tra deadline. User có thể click vào block để chỉnh deadline riêng (custom deadline).
+
+**Sản phẩm có trong Marketing nhưng không có trong MES:** Vẫn tạo block cho nhóm đó (tổng open minutes có thể bằng 0). Hệ thống hiển thị block để user có thể thiết lập Gr.xxx (production group), deadline và xếp lịch khi có dữ liệu MES sau.
 
 ---
 
@@ -57,6 +63,6 @@ Bước 7
 
 Quản lý kéo block vào line sản xuất.
 
-- Khi kéo, **kéo toàn bộ block** (không kéo một nửa). Ngoại trừ: phần vượt deadline được tách ra để kéo riêng.
-- Cho phép kéo block ngược lại phía mục sản phẩm chưa gán; hoặc khi xóa bên line thì nó trở về mục sản phẩm chưa gán.
-- Khi xóa một hàng (line + shift) có block trên đó: hệ thống hiện **cảnh báo**, sau đó các block trở về danh sách chờ.
+- **Kéo toàn bộ block** (không kéo một nửa). Riêng **phần vượt deadline** được tách ra: khi user click và kéo phần sau deadline thì chỉ phần đó di chuyển, không kéo phần phía trước deadline đi theo.
+- Cho phép kéo block ngược về danh sách chưa gán; khi xóa khỏi line thì block trở về danh sách chờ.
+- Khi xóa một hàng (line + shift) có block: hệ thống hiện **cảnh báo**, sau đó các block trên hàng đó trở về danh sách chờ.

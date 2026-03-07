@@ -23,12 +23,7 @@ Hệ thống nhận dữ liệu từ 2 nguồn:
 
 ### 1️⃣ File Marketing Release
 
-Chứa:
-
-* tên sản phẩm
-* nhóm sản phẩm
-* **số lượng sản phẩm** theo từng group (Gr.xxx) — cần nhân với `minutesPerProduct` để tính tổng phút
-* Hệ thống lưu tổng cộng dồn tất cả Gr.xxx (không cần tách từng Gr.xxx)
+Chứa: tên sản phẩm, nhóm (cột K), minutesPerProduct (cột L), **số lượng** theo từng Gr.xxx (cột E–J). Hệ thống lưu **số lượng theo từng Gr.xxx** và **tổng số lượng** (products.json: quantitiesByGroup, totalQuantity). Merge khi import lại: cập nhật từng Gr có trong file; Gr không có giữ nguyên.
 
 ---
 
@@ -41,24 +36,14 @@ Chứa:
 
 ---
 
-# 3. Quy tắc quan trọng của hệ thống
+# 3. ProductionGroup (Gr.xxx) cho từng ProductGroup
 
-`currentMESGroup` cho biết hệ thống MES **đang chạy đến Gr.xxx nào**. Tất cả sản phẩm trong cùng một ProductGroup sẽ có chung `currentMESGroup`.
+Mỗi **ProductGroup** cần một **Gr.xxx** để tra deadline. Giá trị này lưu **theo từng nhóm** trong `productGroups.json` (trường `productionGroup`):
 
-Ví dụ:
+- **User chọn thủ công:** Trong giao diện, user có thể gán/sửa Gr.xxx cho từng nhóm.
+- **Mặc định:** Nếu chưa chọn, hệ thống dùng **Gr.xxx lớn nhất** mà nhóm có trong dữ liệu (từ số lượng theo Gr trong Marketing).
 
-MES hiện tại đã chạy đến:
-
-```
-Gr.285
-```
-
-Thì deadline check mặc định áp dụng **chung cho tất cả block** dựa trên Gr.xxx mà ProductGroup đó đã đến.
-
-Tuy nhiên:
-- Một ProductGroup khác có thể mới đến Gr.284 (deadline khác)
-- User có thể bấm vào **từng block** để chỉnh deadline riêng (customDeadline)
-- Mỗi ProductGroup gắn với một Gr.xxx duy nhất (Gr.xxx mà nhóm đó đã đến)
+Khi tạo block, hệ thống lấy `productionGroup` của ProductGroup đó để gắn vào block và tra deadline trong `deadlines.json`. User có thể ghi đè deadline cho từng block bằng `customDeadline`.
 
 ---
 
@@ -76,10 +61,9 @@ Data/
 ├── schedule.json
 │
 ├── factory/
-│   ├── lines.json
-│   ├── shifts.json
-│   ├── workers.json
-│   └── cellCapacity.json
+│   ├── lines.json      # Danh sách line (Line 1, Line 2, ...)
+│   ├── shifts.json     # Mặc định workers, efficiency theo line + shift
+│   └── cellCapacity.json   # Override workers, minutes theo (line, shift, ngày)
 │
 └── settings.json
 ```
@@ -88,35 +72,47 @@ Data/
 
 # 5. products.json
 
-Lưu thông tin sản phẩm. `totalQuantity` là tổng số lượng cộng dồn tất cả Gr.xxx (không tách từng Gr).
+Lưu thông tin sản phẩm từ Marketing: nhóm, số lượng theo từng Gr.xxx và tổng. Dùng để merge khi import lại và để suy ra Gr.xxx mặc định cho ProductGroup (Gr lớn nhất).
 
 ```json
 [
   {
     "productId": "BM8R030110",
     "groupId": "BM8R030",
-    "productionGroup": "Gr.285",
     "function": "DRIVER DOOR PANEL",
     "minutesPerProduct": 18,
+    "quantitiesByGroup": {
+      "Gr.284": 20,
+      "Gr.285": 30
+    },
     "totalQuantity": 50
   }
 ]
 ```
 
+- **quantitiesByGroup:** số lượng theo từng Gr.xxx (chỉ những Gr có dữ liệu).
+- **totalQuantity:** tổng cộng dồn tất cả Gr.
+- Khi import lại: cập nhật từng Gr có trong file mới; Gr không có trong file mới giữ nguyên; sau đó tính lại totalQuantity.
+
 ---
 
 # 6. productGroups.json
 
-Danh sách nhóm sản phẩm. Trường **name** là **tên do người dùng đặt** (hiển thị cho nhóm); giao diện cần có phần cho phép người dùng đặt/sửa tên nhóm.
+Danh sách nhóm sản phẩm. Mỗi nhóm có **tên hiển thị** (user đặt/sửa) và **Gr.xxx dùng để tra deadline** (productionGroup).
 
 ```json
 [
   {
     "groupId": "BM8R030",
-    "name": "DRIVER DOOR PANEL"
+    "name": "DRIVER DOOR PANEL",
+    "productionGroup": "Gr.285"
   }
 ]
 ```
+
+- **name:** tên hiển thị do user đặt; giao diện cho phép sửa.
+- **productionGroup:** Gr.xxx áp dụng cho nhóm này để lấy deadline. User chọn thủ công; nếu trống, hệ thống dùng Gr.xxx **lớn nhất** có trong `products` của nhóm (từ quantitiesByGroup).
+- Khi tạo block cho ProductGroup, hệ thống lấy `productionGroup` từ đây (hoặc tính mặc định) và gắn vào block.
 
 ---
 
@@ -133,11 +129,7 @@ Dữ liệu import từ hệ thống MES.
 ]
 ```
 
-Sau khi import, hệ thống sẽ:
-
-```
-gom open minutes theo ProductGroup và gắn ProductionGroup (Gr.xxx mà nhóm đó đã đến) tương ứng cho block.
-```
+Sau khi import, hệ thống gom open minutes theo ProductGroup. Khi tạo block, ProductionGroup (Gr.xxx) của block lấy từ `productGroups[].productionGroup` (hoặc mặc định Gr.xxx lớn nhất của nhóm).
 
 ---
 
@@ -162,30 +154,40 @@ Deadline chung được thiết lập theo production group (Gr.xxx). Trường 
 
 # 9. settings.json và Cấu hình Factory
 
-Hệ thống cần biết **MES đang chạy tới group nào** và cấu hình mặc định. (Lưu ý: Do yêu cầu hiệu suất của mỗi ca khác nhau, efficiency sẽ được chuyển xuống lưu từng ca trong Factory cấu hình, không còn dùng chung global).
+**settings.json** — cấu hình chung (vd số phút mặc định một ca).
 
 ```json
 {
-  "currentMESGroup": "Gr.285",
   "defaultShiftMinutes": 480
 }
 ```
 
-**factory/shifts.json** (Cấu hình mặc định theo line + shift)
+**factory/lines.json** — danh sách line (để biết có những line nào, tạo hàng trên bảng).
+
+```json
+["Line 1", "Line 2"]
+```
+
+**factory/shifts.json** — Cấu hình mặc định theo (line + shift): số công nhân, hiệu suất. Số phút mặc định lấy từ settings hoặc cùng file.
+
 ```json
 [
   {
-    "line": "Line 1",
+    "lineId": "Line 1",
     "shift": "A",
     "efficiency": 1.15,
-    "workers": 10
+    "workers": 13
+  },
+  {
+    "lineId": "Line 1",
+    "shift": "B",
+    "efficiency": 1.15,
+    "workers": 13
   }
 ]
 ```
 
-**factory/cellCapacity.json** (Override số người / số phút theo từng ô: line + shift + ngày)
-
-Khi user chỉnh sửa riêng cho một cell (double-click vào ô để đổi số người, số phút làm việc cho ngày đó + ca đó), hệ thống lưu vào đây. Ô nào không có trong file thì dùng mặc định từ `shifts.json`. Công suất ô = workers × minutes × efficiency (của ô đó hoặc mặc định ca).
+**factory/cellCapacity.json** — Override cho từng ô (line + shift + ngày). Double-click vào **cell** để chỉnh số người, số phút cho **đúng ngày đó** (vd tăng ca = tăng số phút trong cell). Ô không có trong file dùng mặc định từ `shifts.json`. Công suất ô = workers × minutes × efficiency.
 
 ```json
 [
@@ -203,13 +205,11 @@ Khi user chỉnh sửa riêng cho một cell (double-click vào ô để đổi 
 
 # 10. blocks.json (Danh sách block — chờ gán hoặc đã gán một phần)
 
-- **Một ProductGroup = một block.** Nếu sản phẩm trong nhóm nằm ở nhiều Gr.xxx thì vẫn chỉ lưu **một block** với tổng số phút (totalMinutes). Block gắn với ProductionGroup (Gr.xxx mà nhóm đó đã đến) để kiểm tra deadline.
-- Block length = **tổng số phút** còn lại cần sản xuất (open minutes của nhóm).
-- Hệ thống lưu tổng cộng dồn tất cả Gr.xxx (không cần tách từng Gr.xxx).
-- **allocatedMinutes:** số phút **đã được đặt vào schedule** (đã kéo vào line). Block chưa gán thì allocatedMinutes = 0; khi gán hết thì có thể xóa khỏi blocks.json hoặc đánh dấu trạng thái.
-- **status** (gợi ý): `Unassigned` (chưa gán), `FullyAssigned` (đã gán hết). Khi user kéo block từ line về lại danh sách chờ: cập nhật lại block trong blocks.json (allocatedMinutes = 0, status = Unassigned).
-- **Kéo block = kéo toàn bộ** (không có kéo một nửa). Ngoại trừ: phần vượt deadline được tách ra để kéo riêng.
-- **customDeadline:** nếu user ghi đè deadline riêng cho block thì lưu tại đây.
+- **Một ProductGroup = một block.** Độ dài block = tổng open minutes của nhóm (từ MES). **productionGroup** lấy từ `productGroups[].productionGroup` (hoặc mặc định Gr.xxx lớn nhất) để tra deadline.
+- **allocatedMinutes:** số phút đã đặt vào schedule. Block chưa gán: allocatedMinutes = 0; gán hết: status = FullyAssigned.
+- **status:** `Unassigned` | `PartiallyAssigned` (đã gán một phần, block trải nhiều cell) | `FullyAssigned`. Kéo block từ line về danh sách chờ → cập nhật lại block (allocatedMinutes = 0, status = Unassigned).
+- **Kéo toàn bộ block** (không kéo một nửa). Riêng **phần vượt deadline** tách ra: kéo phần sau deadline thì chỉ phần đó di chuyển.
+- **customDeadline:** user ghi đè deadline riêng cho block thì lưu tại đây.
 
 ```json
 [
@@ -283,7 +283,7 @@ Ví dụ:
 # 13. Cell có lưu dữ liệu không?
 
 - **Vị trí block trong ô:** không lưu theo từng cell; dữ liệu nằm trong `schedule.json`. UI đọc `schedule.json` và render block lên grid.
-- **Công suất từng ô (số người, số phút):** mặc định từ `factory/shifts.json`; nếu user chỉnh riêng cho (line, shift, ngày) thì lưu vào `factory/cellCapacity.json`.
+- **Công suất từng ô:** mặc định từ `factory/shifts.json` (theo line + shift). User double-click **hàng** để sửa mặc định cả ca; double-click **cell** để sửa riêng ngày đó (vd tăng ca = tăng số phút) — override lưu vào `factory/cellCapacity.json`.
 
 ---
 

@@ -27,10 +27,11 @@ Line2: Ca B
 Có chỗ để xóa cái hàng đó, có nút thêm hàng.
 - **Khi xóa hàng có block:** hiện cảnh báo, các block trở về danh sách chờ.
 
-Double click vào hàng để mở popup để chỉnh sửa số người trong ca và mặc định bao nhiêu phút.
+**Double-click vào hàng (line + shift):** Mở popup chỉnh **mặc định cho cả ca** — số người, số phút làm việc. Áp dụng cho mọi ngày của ca đó trừ những cell đã override.
 
-Mỗi cell sẽ chứa số người trong ca và số phút (double click vào cell để chỉnh sửa riêng cho ngày đó ca đó, chỉnh số người, số phút làm; khi được chỉnh thì nền của cell sẽ khác các cell khác).
-Không cần quan tâm tổng capacity theo ngày; chỉ quan tâm từng ca (ca A ngày đó hoặc ca B ngày đó). Mỗi ca được coi như một hàng riêng biệt.
+**Double-click vào cell:** Chỉnh **riêng cho ngày đó** (line + shift + ngày) — số người, số phút. Dùng khi tăng ca (vd ca mặc định 480 phút, ngày đó 600 phút) hoặc điều chỉnh theo ngày. Cell được chỉnh có nền khác để phân biệt.
+
+Mỗi cell hiển thị số người và số phút (mặc định từ hàng hoặc override từ cell). Công suất tính theo từng ca (từng hàng), không cộng tổng theo ngày.
 
 ## Ngày nghỉ / ngày lễ
 

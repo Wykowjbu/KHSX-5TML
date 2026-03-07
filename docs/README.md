@@ -15,13 +15,13 @@ Sau khi xử lý dữ liệu, hệ thống tạo ra các **block sản xuất** 
 
 - Import file Excel từ Marketing
 - Import file Excel từ MES
-- Thiết lập deadline cho từng Production Group (Gr.xxx); chọn current group làm mốc
+- Thiết lập deadline cho từng Production Group (Gr.xxx); gán Gr.xxx cho từng nhóm sản phẩm (thủ công hoặc mặc định Gr.xxx lớn nhất)
 - Tự động gán số phút còn lại (từ MES) theo nhóm sản phẩm; cảnh báo và nhập tay nếu không match
 - Gom dữ liệu theo nhóm sản phẩm
 - Hiển thị block sản xuất
 - Kéo thả block vào line sản xuất
 - Tính toán công suất theo line và shift
-- Cho phép điều chỉnh hiệu suất, số người, tăng ca
+- Cho phép điều chỉnh hiệu suất, số người; tăng ca bằng cách chỉnh số phút trong từng cell (line + shift + ngày)
 
 ---
 

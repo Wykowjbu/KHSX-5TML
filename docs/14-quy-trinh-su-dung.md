@@ -1,8 +1,8 @@
 # Quy Trình Sử Dụng
 
-**Bước 1.** Import file Marketing (thường chỉ import 1 lần khi nhận release từ Marketing; khi có thêm Gr.xxx mới thì import lại). Hệ thống đọc: tên sản phẩm, nhóm sản phẩm, Gr.xxx, số lượng × minutesPerProduct = tổng phút. Dữ liệu được merge (không overwrite): Gr.xxx mới thêm vào, sản phẩm đã có chỉ cập nhật số liệu mới.
+**Bước 1.** Import file Marketing. Hệ thống đọc: sản phẩm, nhóm (cột K), minutesPerProduct (cột L), số lượng theo từng Gr.xxx (cột E–J). Merge: cập nhật số lượng theo từng Gr có trong file mới; Gr không có trong file mới giữ nguyên; cập nhật tổng.
 
-**Bước 2.** Thiết lập deadline cho từng Production Group (Gr.xxx) và chọn current group để hệ thống biết lấy deadline nào làm mốc.
+**Bước 2.** Thiết lập deadline cho từng Production Group (Gr.xxx). Gán Gr.xxx cho từng ProductGroup (thủ công hoặc dùng mặc định Gr.xxx lớn nhất của nhóm) để hệ thống biết deadline nào áp dụng cho block.
 
 **Bước 3.** Import file MES.
 
@@ -10,7 +10,7 @@
 
 **Bước 5.** Hệ thống tạo block (mỗi ProductGroup một block; độ dài = tổng open minutes của nhóm từ MES).
 
-**Bước 6.** Kéo block vào line sản xuất (kéo thả toàn bộ block vào các ô line + ca + ngày). Block luôn tự đẩy lên ngày sớm nhất có capacity trống.
+**Bước 6.** Kéo block vào line sản xuất (kéo toàn bộ block vào các ô line + ca + ngày). Block tự đẩy lên ngày sớm nhất có capacity. Thứ tự block trong mỗi cell theo thứ tự user đã kéo. Phần vượt deadline có thể kéo riêng (chỉ phần đó di chuyển).
 
 ---
 
