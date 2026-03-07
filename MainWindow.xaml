@@ -4,9 +4,220 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:KHSX"
+        xmlns:viewmodels="clr-namespace:KHSX.ViewModels"
+        xmlns:models="clr-namespace:KHSX.Models"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
-    <Grid>
+        Title="Hệ thống Lập Kế Hoạch Sản Xuất" Height="768" Width="1366"
+        WindowState="Maximized">
+    <Window.DataContext>
+        <viewmodels:MainViewModel x:Name="ViewModel"/>
+    </Window.DataContext>
 
+    <Window.Resources>
+        <!-- Define converters FIRST -->
+        <local:BoolToRedBorderConverter x:Key="BoolToRedBorderConverter"/>
+        <local:BoolToBorderThicknessConverter x:Key="BoolToBorderThicknessConverter"/>
+        <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <local:WeekendColorConverter x:Key="WeekendColorConverter"/>
+        <local:InverseBoolConverter x:Key="InverseBoolConverter"/>
+        <local:CustomConfigBackgroundConverter x:Key="CustomConfigBackgroundConverter"/>
+        <local:DayCellBackgroundConverter x:Key="DayCellBackgroundConverter"/>
+        <local:PercentageToWidthConverter x:Key="PercentageToWidthConverter"/>
+        
+        <!-- DataTemplate mặc định cho block trên grid -->
+        <DataTemplate DataType="{x:Type models:ProductBlock}">
+            <Border Background="{Binding DisplayColor}" 
+                    BorderBrush="{Binding IsExceedingDeadline, Converter={StaticResource BoolToRedBorderConverter}}" 
+                    BorderThickness="{Binding IsExceedingDeadline, Converter={StaticResource BoolToBorderThicknessConverter}}" 
+                    Margin="2" 
+                    Padding="5" 
+                    CornerRadius="3"
+                    MouseMove="ProductBlock_MouseMove"
+                    Cursor="Hand"
+                    ToolTip="{Binding TooltipText}">
+                <TextBlock Text="{Binding DisplayText}" FontWeight="Bold" Foreground="DarkSlateGray"/>
+            </Border>
+        </DataTemplate>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="50"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Background="#f0f0f0" BorderBrush="#ccc" BorderThickness="0,0,0,1">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0">
+                <Button Content="1. Import Marketing" Command="{Binding ImportMarketingCommand}" Padding="10,5" Margin="0,0,10,0"/>
+                <Button Content="2. Thiết Lập Deadline" Command="{Binding ConfigDeadlinesCommand}" Padding="10,5" Margin="0,0,10,0"/>
+                <Button Content="Cấu Hình Groups (Marketing)" Command="{Binding ConfigGroupsCommand}" Padding="10,5" Margin="0,0,10,0" Background="#FF9800" Foreground="White" ToolTip="Đổi tên và thiết lập Group sản xuất mặc định"/>
+                <Button Content="3. Import MES -> Tạo Block" Command="{Binding ImportMESCommand}" Padding="10,5" Margin="0,0,10,0"/>
+                
+                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="10,0"/>
+                <Button Content="Lưu cấu hình" Command="{Binding SaveConfigurationCommand}" Padding="10,5" Margin="0,0,10,0"/>
+                <Button Content="Xoá Toàn Bộ" Command="{Binding ClearAllBlocksCommand}" Padding="10,5" Margin="0,0,10,0" Background="#F44336" Foreground="White" ToolTip="Kéo toàn bộ lịch đã xếp về lại danh sách chưa gán"/>
+                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="10,0"/>
+                <Button Content="➕ Thêm Line" Command="{Binding AddLineCommand}" Padding="10,5" Margin="0,0,20,0" Background="#4CAF50" Foreground="White"/>
+                <TextBlock Text="Ngày Bắt Đầu: " VerticalAlignment="Center" FontWeight="Bold"/>
+                <DatePicker SelectedDate="{Binding StartDate, Mode=TwoWay}" Width="150" Margin="5,0"/>
+                <TextBlock Text="Ngày Kết Thúc (Deadline Tổng): " VerticalAlignment="Center" FontWeight="Bold"/>
+                <DatePicker SelectedDate="{Binding DeadlineDate, Mode=TwoWay}" Width="150" Margin="5,0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Main Content -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="250" MinWidth="150"/>
+                <ColumnDefinition Width="5"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Left Panel: Unassigned Blocks -->
+            <Border Grid.Column="0" BorderBrush="#ccc" BorderThickness="0,0,1,0" Padding="10" x:Name="LeftPanel">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <TextBlock Text="Sản phẩm chưa gán" FontWeight="Bold" FontSize="14" Margin="0,0,0,10"/>
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" x:Name="UnassignedScrollViewer">
+                        <ItemsControl ItemsSource="{Binding UnassignedBlocks}" x:Name="UnassignedItemsControl">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type models:ProductBlock}">
+                                    <Border Background="{Binding DisplayColor}" 
+                                            BorderBrush="{Binding IsExceedingDeadline, Converter={StaticResource BoolToRedBorderConverter}}" 
+                                            BorderThickness="1" 
+                                            Margin="2" 
+                                            Padding="5" 
+                                            CornerRadius="3"
+                                            HorizontalAlignment="Left"
+                                            MouseMove="ProductBlock_MouseMove"
+                                            Cursor="Hand"
+                                            ToolTip="{Binding DisplayText}">
+                                        <Border.Width>
+                                            <MultiBinding Converter="{StaticResource PercentageToWidthConverter}">
+                                                <Binding Path="WidthPercentage"/>
+                                                <Binding Path="ActualWidth" ElementName="UnassignedScrollViewer"/>
+                                            </MultiBinding>
+                                        </Border.Width>
+                                        <TextBlock Text="{Binding DisplayText}" 
+                                                   FontWeight="Bold" 
+                                                   Foreground="DarkSlateGray" 
+                                                   TextWrapping="NoWrap"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <!-- Grid Splitter -->
+            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="#eee"/>
+
+            <!-- Right Panel: Gantt Chart -->
+            <ScrollViewer Grid.Column="2" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding Rows}" Margin="10">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type models:ShiftRow}">
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="120"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <!-- Line Name -->
+                                <Border Background="#ddd" BorderBrush="#aaa" BorderThickness="1" Padding="5"
+                                        Tag="{Binding}">
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="*"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        
+                                        <TextBlock Grid.Row="0" Text="{Binding RowName}" 
+                                                   VerticalAlignment="Center" HorizontalAlignment="Center" 
+                                                   FontWeight="Bold"
+                                                   FontSize="11"
+                                                   TextWrapping="Wrap"
+                                                   TextAlignment="Center"
+                                                   MouseLeftButtonDown="LineName_DoubleClick"
+                                                   Cursor="Hand"
+                                                   ToolTip="Click để đổi tên và cấu hình ca"/>
+                                        
+                                        <Button Grid.Row="1" Content="🗑️" 
+                                                Command="{Binding DataContext.RemoveLineCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                CommandParameter="{Binding}"
+                                                Width="60" Height="25" Margin="0,5,0,0"
+                                                Background="#f44336" Foreground="White"
+                                                FontSize="12" Padding="2"
+                                                ToolTip="Xóa Line"/>
+                                    </Grid>
+                                </Border>
+
+                                <!-- Days in Line -->
+                                <ItemsControl Grid.Column="1" ItemsSource="{Binding Days}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <StackPanel Orientation="Horizontal"/>
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate DataType="{x:Type models:DayCell}">
+                                            <Border Width="120" Height="100" 
+                                                    BorderBrush="#aaa" BorderThickness="1" 
+                                                    AllowDrop="{Binding IsWeekend, Converter={StaticResource InverseBoolConverter}}"
+                                                    Drop="DayCell_Drop" DragEnter="DayCell_DragEnter"
+                                                    MouseRightButtonUp="DayCell_RightClick"
+                                                    Tag="{Binding}">
+                                                <Border.Background>
+                                                    <MultiBinding Converter="{StaticResource DayCellBackgroundConverter}">
+                                                        <Binding Path="IsWeekend"/>
+                                                        <Binding Path="HasCustomConfig"/>
+                                                    </MultiBinding>
+                                                </Border.Background>
+                                                
+                                                <Grid>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="*"/>
+                                                    </Grid.RowDefinitions>
+                                                    
+                                                    <!-- Vạch đỏ nếu là Deadline -->
+                                                    <Border Grid.RowSpan="2" BorderThickness="3,0,0,0" BorderBrush="Red" 
+                                                            Visibility="{Binding IsDeadline, Converter={StaticResource BoolToVisibilityConverter}}" 
+                                                            HorizontalAlignment="Right" Panel.ZIndex="10"/>
+
+                                                    <!-- Date Header -->
+                                                    <TextBlock Grid.Row="0" Text="{Binding Date, StringFormat=dd/MM}" HorizontalAlignment="Center" Foreground="#555" FontSize="10" Margin="0,2,0,0"/>
+                                                    
+                                                    <!-- Watermark Ca A | Ca B | Tổng -->
+                                                    <TextBlock Grid.Row="1" Text="{Binding WatermarkText}" 
+                                                               Foreground="#888" FontSize="9" 
+                                                               HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                                                               Margin="0,0,0,2" Panel.ZIndex="0" TextWrapping="Wrap"/>
+
+                                                    <!-- Assigned Blocks -->
+                                                    <ItemsControl Grid.Row="1" ItemsSource="{Binding Blocks}" Panel.ZIndex="1" VerticalAlignment="Top">
+                                                        <ItemsControl.ItemsPanel>
+                                                            <ItemsPanelTemplate>
+                                                                <StackPanel Orientation="Vertical"/>
+                                                            </ItemsPanelTemplate>
+                                                        </ItemsControl.ItemsPanel>
+                                                    </ItemsControl>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Grid>
     </Grid>
 </Window>
