@@ -11,4 +11,4 @@ Hệ thống sẽ kiểm tra:
 - công suất line
 - deadline của group
 
-Nếu không đủ công suất thì có thể chuyển sang line khác.
+Nếu không đủ công suất trên line/ca hiện tại thì **người dùng quan sát và tự kéo block sang line khác** (thao tác thủ công); hệ thống không tự động chuyển line.

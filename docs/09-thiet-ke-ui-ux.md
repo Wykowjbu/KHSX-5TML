@@ -14,7 +14,7 @@ Chiều dài block tương ứng với số phút sản xuất.
 
 
 Thiết kế theo kiểu data grid
-Cột là ngày ( ngyaf đầu tiên là hôm nay)
+Cột là ngày (ngày đầu tiên là hôm nay)
 Từng hàng là ca
 Ví dụ:
 
@@ -28,4 +28,6 @@ Có chổ để xoá cái hàng đó, có nút thêm hàng,
 double click vào hàng để mở popup để chỉnh sửa số người trong ca và mặc định bao nhiêu phút
 
 Mỗi cell sẽ chứa số người trong ca và số phút ( double click vào cell để chỉnh sửa riêng cho ngày đó ca đó, chỉnh sô người, số phút làm , khi đc chỉnh thì nền của cell sẽ khác các cell khác)
-Khong cần quan tấm yếu tố tôngt capa ngày đó, chỉ quan tâm ca A ngyaf đó hoặc ca B ngyaf đó thôi. nó giống thiết kế hiện tại tuy nhiên phải tách ra không còn dùng tổng nữa. giống kiểu mỗi ca là mỗi line riêng biệt
+Không cần quan tâm tổng capacity theo ngày; chỉ quan tâm từng ca (ca A ngày đó hoặc ca B ngày đó). Mỗi ca được coi như một hàng riêng biệt.
+
+**Tên nhóm sản phẩm:** Giao diện cần có phần cho phép người dùng **đặt tên** (hoặc sửa tên) cho từng nhóm sản phẩm (ProductGroup).

@@ -80,7 +80,8 @@ Data/
 ├── factory/
 │   ├── lines.json
 │   ├── shifts.json
-│   └── workers.json
+│   ├── workers.json
+│   └── cellCapacity.json
 │
 └── settings.json
 ```
@@ -96,6 +97,7 @@ Lưu thông tin sản phẩm.
   {
     "productId": "BM8R030110",
     "groupId": "BM8R030",
+    "productionGroup": "Gr.285",
     "function": "DRIVER DOOR PANEL",
     "minutesPerProduct": 18
   }
@@ -106,7 +108,7 @@ Lưu thông tin sản phẩm.
 
 # 6. productGroups.json
 
-Danh sách nhóm sản phẩm.
+Danh sách nhóm sản phẩm. Trường **name** là **tên do người dùng đặt** (hiển thị cho nhóm); giao diện cần có phần cho phép người dùng đặt/sửa tên nhóm.
 
 ```json
 [
@@ -135,23 +137,23 @@ Dữ liệu import từ hệ thống MES.
 Sau khi import, hệ thống sẽ:
 
 ```
-gom open minutes theo ProductGroup
+gom open minutes theo ProductGroup và gắn ProductionGroup (Gr.xxx) tương ứng cho block.
 ```
 
 ---
 
 # 8. deadlines.json
 
-Deadline được thiết lập theo group marketing.
+Deadline chung được thiết lập theo production group (Gr.xxx).
 
 ```json
 [
   {
-    "groupNumber": 284,
+    "groupNumber": "Gr.284",
     "deadline": "2026-03-07"
   },
   {
-    "groupNumber": 285,
+    "groupNumber": "Gr.285",
     "deadline": "2026-03-09"
   }
 ]
@@ -159,40 +161,65 @@ Deadline được thiết lập theo group marketing.
 
 ---
 
-# 9. settings.json
+# 9. settings.json và Cấu hình Factory
 
-Hệ thống cần biết **MES đang chạy tới group nào**.
+Hệ thống cần biết **MES đang chạy tới group nào** và cấu hình mặc định. (Lưu ý: Do yêu cầu hiệu suất của mỗi ca khác nhau, efficiency sẽ được chuyển xuống lưu từng ca trong Factory cấu hình, không còn dùng chung global).
 
 ```json
 {
-  "currentMESGroup": 285,
-  "efficiency": 1.15,
+  "currentMESGroup": "Gr.285",
   "defaultShiftMinutes": 480
 }
 ```
 
-Deadline của block sẽ được lấy từ:
-
+**factory/shifts.json** (Cấu hình mặc định theo line + shift)
+```json
+[
+  {
+    "line": "Line 1",
+    "shift": "A",
+    "efficiency": 1.15,
+    "workers": 10
+  }
+]
 ```
-deadline[currentMESGroup]
+
+**factory/cellCapacity.json** (Override số người / số phút theo từng ô: line + shift + ngày)
+
+Khi user chỉnh sửa riêng cho một cell (double-click vào ô để đổi số người, số phút làm việc cho ngày đó + ca đó), hệ thống lưu vào đây. Ô nào không có trong file thì dùng mặc định từ `shifts.json`. Công suất ô = workers × minutes × efficiency (của ô đó hoặc mặc định ca).
+
+```json
+[
+  {
+    "lineId": "Line 1",
+    "shift": "A",
+    "date": "2026-03-07",
+    "workers": 12,
+    "minutes": 480
+  }
+]
 ```
 
 ---
 
-# 10. blocks.json
+# 10. blocks.json (Danh sách block — chờ gán hoặc đã gán một phần)
 
-Block đại diện cho **ProductGroup**.
-
-Block length = tổng số phút sản xuất cần thiết.
+- **Một ProductGroup = một block.** Nếu sản phẩm trong nhóm nằm ở nhiều Gr.xxx thì vẫn chỉ lưu **một block** với tổng số phút (totalMinutes). Block gắn với ProductionGroup (Gr.xxx) để kiểm tra deadline (theo current group).
+- Block length = **tổng số phút** còn lại cần sản xuất (open minutes của nhóm).
+- **allocatedMinutes:** số phút **đã được đặt vào schedule** (đã kéo vào line). Block chưa gán thì allocatedMinutes = 0; khi gán một phần thì allocatedMinutes = tổng phút đã nằm trên bảng; khi gán hết thì có thể xóa khỏi blocks.json hoặc đánh dấu trạng thái.
+- **status** (gợi ý): dùng để biết block đã vào schedule hay chưa — ví dụ `Unassigned` (chưa gán), `PartiallyAssigned` (gán một phần), `FullyAssigned` (đã gán hết; khi đó có thể không còn trong blocks.json hoặc chỉ đánh dấu). Khi user kéo block từ line về lại danh sách chờ: cập nhật lại block trong blocks.json (allocatedMinutes = 0, status = Unassigned).
+- **customDeadline:** nếu user ghi đè deadline riêng cho block thì lưu tại đây.
 
 ```json
 [
   {
     "blockId": "BLOCK_1",
     "productGroup": "BM8R030",
+    "productionGroup": "Gr.285",
     "totalMinutes": 1200,
-    "scheduledMinutes": 0,
-    "deadline": "2026-03-09"
+    "allocatedMinutes": 0,
+    "status": "Unassigned",
+    "customDeadline": "2026-03-10"
   }
 ]
 ```
@@ -201,35 +228,28 @@ Block length = tổng số phút sản xuất cần thiết.
 
 # 11. schedule.json
 
-File này lưu **vị trí block trên planning board**.
+File này lưu **vị trí block trên planning board** (Các block đã gán).
 
 ```json
 [
   {
-    "blockId": "BLOCK_1",
-    "lineId": "LINE1",
+    "blockId": "BLOCK_1_SPLIT_1",
+    "parentId": "BLOCK_1",
+    "productGroup": "BM8R030",
+    "productionGroup": "Gr.285",
+    "lineId": "Line 1",
     "shift": "A",
     "date": "2026-03-06",
-    "startMinute": 0,
-    "duration": 600
+    "allocatedMinutes": 600,
+    "customDeadline": "2026-03-10" 
   }
 ]
 ```
 
-Một block có thể chia thành nhiều phần nếu kéo qua nhiều ngày.
-
-Ví dụ:
-
-```
-BLOCK_1 = 1200 phút
-```
-
-Có thể được schedule:
-
-```
-6/3 → 600 phút
-7/3 → 600 phút
-```
+Một block có thể chia thành nhiều phần nếu kéo qua nhiều ngày. Khóa `parentId` cho phép gom chúng lại. Nếu người dùng **Kéo thả block ngược về danh sách chờ / Xóa khỏi line**, hệ thống sẽ:
+1. Xóa các phân mảnh (split block) trong `schedule.json`.
+2. Tính tổng số phút `allocatedMinutes` của các mảnh đó.
+3. Sinh lại một Block nguyên vẹn vào `blocks.json` để chờ xếp lịch tiếp.
 
 ---
 
@@ -255,36 +275,29 @@ Ví dụ:
 
 # 13. Cell có lưu dữ liệu không?
 
-Cell **không phải entity dữ liệu**.
-
-Cell chỉ là **UI representation**.
-
-Dữ liệu thực nằm trong:
-
-```
-schedule.json
-```
-
-UI sẽ đọc `schedule.json` và render block lên grid.
+- **Vị trí block trong ô:** không lưu theo từng cell; dữ liệu nằm trong `schedule.json`. UI đọc `schedule.json` và render block lên grid.
+- **Công suất từng ô (số người, số phút):** mặc định từ `factory/shifts.json`; nếu user chỉnh riêng cho (line, shift, ngày) thì lưu vào `factory/cellCapacity.json`.
 
 ---
 
 # 14. Cấu trúc Model trong WPF
 
-Ví dụ model Block:
+Ví dụ model BlockData (JSON mapping):
 
 ```csharp
-public class Block
+public class BlockData
 {
-    public string BlockId { get; set; }
-
-    public string ProductGroup { get; set; }
-
-    public double TotalMinutes { get; set; }
-
-    public double ScheduledMinutes { get; set; }
-
-    public DateTime Deadline { get; set; }
+    public Guid BlockId { get; set; }
+    public Guid? ParentId { get; set; } // Liên kết các block bị xé lẻ
+    public string GroupId { get; set; } // ProductGroup vd: BM8R030
+    public string ProductionGroup { get; set; } // Gr.xxx
+    
+    public double TotalMinutesRequired { get; set; }
+    public double AllocatedMinutes { get; set; } // Đã đặt vào schedule
+    
+    public string Status { get; set; } // Unassigned | PartiallyAssigned | FullyAssigned
+    
+    public DateTime? CustomDeadline { get; set; } // Ghi đè deadline
 }
 ```
 
@@ -342,6 +355,3 @@ ProductionPlanning/
 * Dễ debug
 * Phù hợp với ứng dụng desktop
 * dễ mở rộng sau này
-
-```
-```
