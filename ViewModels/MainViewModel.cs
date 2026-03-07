@@ -17,6 +17,7 @@ namespace KHSX.ViewModels
         private readonly ExcelImportService _excelService;
         private readonly ConfigurationService _configService;
         private List<DeadlineData> _customDeadlines = new();
+        private bool _isLoading = false;
 
         [ObservableProperty]
         private ObservableCollection<ProductBlock> unassignedBlocks = new ObservableCollection<ProductBlock>();
@@ -82,6 +83,8 @@ namespace KHSX.ViewModels
 
         partial void OnDeadlineDateChanged(DateTime value)
         {
+            if (_isLoading) return; // Bỏ qua nếu đang nạp dữ liệu từ json
+
             // Update deadline flags on all day cells
             foreach (var row in Rows)
             {
@@ -99,6 +102,8 @@ namespace KHSX.ViewModels
 
         partial void OnStartDateChanged(DateTime value)
         {
+            if (_isLoading) return; // Bỏ qua nếu đang nạp dữ liệu từ json
+
             InitializeRows();
         }
 
@@ -402,6 +407,8 @@ namespace KHSX.ViewModels
         {
             try
             {
+                _isLoading = true; // Bật cờ isLoading để chặn các event OnChanged
+
                 // 1. Load cấu hình cơ bản
                 var config = _configService.LoadConfiguration();
                 if (config != null)
@@ -448,6 +455,10 @@ namespace KHSX.ViewModels
             catch (Exception ex)
             {
                 MessageBox.Show($"Lỗi phần khôi phục dữ liệu hệ thống: {ex.Message}", "Lỗi", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                _isLoading = false; // Tắt cờ isLoading
             }
         }
 
@@ -531,6 +542,68 @@ namespace KHSX.ViewModels
             }
         }
 
+        [RelayCommand]
+        private void ClearAllBlocks()
+        {
+            var result = MessageBox.Show(
+                "Bạn thực sự muốn reset tất cả?\nToàn bộ sản phẩm đã gán trên các line sẽ bị trả lại về mục chưa gán.",
+                "Xác nhận xoá toàn bộ",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                bool hasBlocks = false;
+                // Di chuyển tất cả các block trên grid về unassigned
+                foreach (var row in Rows)
+                {
+                    foreach (var day in row.Days)
+                    {
+                        if (day.Blocks.Count > 0)
+                        {
+                            hasBlocks = true;
+                            foreach (var block in day.Blocks.ToList())
+                            {
+                                var reconstructedBlock = new ProductBlock
+                                {
+                                    ParentId = block.ParentId ?? block.Id,
+                                    SourceId = block.SourceId,
+                                    Code = block.Code,
+                                    ProductionGroup = block.ProductionGroup,
+                                    FunctionName = block.FunctionName,
+                                    TotalMinutesRequired = block.TotalMinutesRequired,
+                                    AllocatedMinutes = block.AllocatedMinutes,
+                                    DisplayColor = block.DisplayColor
+                                };
+                                
+                                // Ghép với block đã có trong unassigned nếu cùng parentId
+                                var existingUnassigned = UnassignedBlocks.FirstOrDefault(b => b.ParentId == reconstructedBlock.ParentId || b.Id == reconstructedBlock.ParentId);
+                                if (existingUnassigned != null)
+                                {
+                                    existingUnassigned.AllocatedMinutes += reconstructedBlock.AllocatedMinutes;
+                                }
+                                else
+                                {
+                                    UnassignedBlocks.Add(reconstructedBlock);
+                                }
+                            }
+                            day.Blocks.Clear();
+                        }
+                    }
+                }
+
+                if (hasBlocks)
+                {
+                    SaveConfiguration();
+                    MessageBox.Show("Đã trả toàn bộ sản phẩm về khu vực chưa gán.", "Thành Công!", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                else
+                {
+                    MessageBox.Show("Các line hiện tại đang trống, không có sản phẩm nào để xoá.", "Thông Báo", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+        }
+
         public void HandleDrop(ProductBlock droppedBlock, DayCell targetDay, ShiftRow targetRow)
         {
             // Nếu block này là từ panel trái (unassigned)
@@ -556,6 +629,9 @@ namespace KHSX.ViewModels
                     HandleDropFullBlock(droppedBlock, parentId, targetDay, targetRow);
                 }
             }
+
+            // Lưu lại thông tin lưới sau khi kéo thả thành công
+            SaveConfiguration();
         }
 
         /// <summary>

@@ -56,6 +56,7 @@
                 
                 <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="10,0"/>
                 <Button Content="Lưu cấu hình" Command="{Binding SaveConfigurationCommand}" Padding="10,5" Margin="0,0,10,0"/>
+                <Button Content="Xoá Toàn Bộ" Command="{Binding ClearAllBlocksCommand}" Padding="10,5" Margin="0,0,10,0" Background="#F44336" Foreground="White" ToolTip="Kéo toàn bộ lịch đã xếp về lại danh sách chưa gán"/>
                 <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="10,0"/>
                 <Button Content="➕ Thêm Line" Command="{Binding AddLineCommand}" Padding="10,5" Margin="0,0,20,0" Background="#4CAF50" Foreground="White"/>
                 <TextBlock Text="Ngày Bắt Đầu: " VerticalAlignment="Center" FontWeight="Bold"/>
