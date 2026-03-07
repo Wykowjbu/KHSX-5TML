@@ -28,5 +28,6 @@ Mỗi line có:
 Mỗi shift có:
 
 - số lượng công nhân
+- hiệu suất
 
 Mỗi công nhân có số phút làm việc mỗi ca.

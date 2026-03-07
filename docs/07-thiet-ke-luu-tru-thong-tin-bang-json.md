@@ -27,7 +27,8 @@ Chứa:
 
 * tên sản phẩm
 * nhóm sản phẩm
-* số lượng theo từng group (Gr.xxx)
+* **số lượng sản phẩm** theo từng group (Gr.xxx) — cần nhân với `minutesPerProduct` để tính tổng phút
+* Hệ thống lưu tổng cộng dồn tất cả Gr.xxx (không cần tách từng Gr.xxx)
 
 ---
 
@@ -42,7 +43,7 @@ Chứa:
 
 # 3. Quy tắc quan trọng của hệ thống
 
-MES luôn hoạt động theo **group mới nhất**.
+`currentMESGroup` cho biết hệ thống MES **đang chạy đến Gr.xxx nào**. Tất cả sản phẩm trong cùng một ProductGroup sẽ có chung `currentMESGroup`.
 
 Ví dụ:
 
@@ -52,15 +53,12 @@ MES hiện tại đã chạy đến:
 Gr.285
 ```
 
-Thì hệ thống lập kế hoạch **chỉ quan tâm deadline của Gr.285**.
+Thì deadline check mặc định áp dụng **chung cho tất cả block** dựa trên Gr.xxx mà ProductGroup đó đã đến.
 
-Không cần quan tâm:
-
-```
-Gr.284
-```
-
-dù vẫn còn open minutes.
+Tuy nhiên:
+- Một ProductGroup khác có thể mới đến Gr.284 (deadline khác)
+- User có thể bấm vào **từng block** để chỉnh deadline riêng (customDeadline)
+- Mỗi ProductGroup gắn với một Gr.xxx duy nhất (Gr.xxx mà nhóm đó đã đến)
 
 ---
 
@@ -90,7 +88,7 @@ Data/
 
 # 5. products.json
 
-Lưu thông tin sản phẩm.
+Lưu thông tin sản phẩm. `totalQuantity` là tổng số lượng cộng dồn tất cả Gr.xxx (không tách từng Gr).
 
 ```json
 [
@@ -99,7 +97,8 @@ Lưu thông tin sản phẩm.
     "groupId": "BM8R030",
     "productionGroup": "Gr.285",
     "function": "DRIVER DOOR PANEL",
-    "minutesPerProduct": 18
+    "minutesPerProduct": 18,
+    "totalQuantity": 50
   }
 ]
 ```
@@ -137,14 +136,14 @@ Dữ liệu import từ hệ thống MES.
 Sau khi import, hệ thống sẽ:
 
 ```
-gom open minutes theo ProductGroup và gắn ProductionGroup (Gr.xxx) tương ứng cho block.
+gom open minutes theo ProductGroup và gắn ProductionGroup (Gr.xxx mà nhóm đó đã đến) tương ứng cho block.
 ```
 
 ---
 
 # 8. deadlines.json
 
-Deadline chung được thiết lập theo production group (Gr.xxx).
+Deadline chung được thiết lập theo production group (Gr.xxx). Trường `groupNumber` là mã Gr.xxx ("Gr.284", "Gr.285"...).
 
 ```json
 [
@@ -204,10 +203,12 @@ Khi user chỉnh sửa riêng cho một cell (double-click vào ô để đổi 
 
 # 10. blocks.json (Danh sách block — chờ gán hoặc đã gán một phần)
 
-- **Một ProductGroup = một block.** Nếu sản phẩm trong nhóm nằm ở nhiều Gr.xxx thì vẫn chỉ lưu **một block** với tổng số phút (totalMinutes). Block gắn với ProductionGroup (Gr.xxx) để kiểm tra deadline (theo current group).
+- **Một ProductGroup = một block.** Nếu sản phẩm trong nhóm nằm ở nhiều Gr.xxx thì vẫn chỉ lưu **một block** với tổng số phút (totalMinutes). Block gắn với ProductionGroup (Gr.xxx mà nhóm đó đã đến) để kiểm tra deadline.
 - Block length = **tổng số phút** còn lại cần sản xuất (open minutes của nhóm).
-- **allocatedMinutes:** số phút **đã được đặt vào schedule** (đã kéo vào line). Block chưa gán thì allocatedMinutes = 0; khi gán một phần thì allocatedMinutes = tổng phút đã nằm trên bảng; khi gán hết thì có thể xóa khỏi blocks.json hoặc đánh dấu trạng thái.
-- **status** (gợi ý): dùng để biết block đã vào schedule hay chưa — ví dụ `Unassigned` (chưa gán), `PartiallyAssigned` (gán một phần), `FullyAssigned` (đã gán hết; khi đó có thể không còn trong blocks.json hoặc chỉ đánh dấu). Khi user kéo block từ line về lại danh sách chờ: cập nhật lại block trong blocks.json (allocatedMinutes = 0, status = Unassigned).
+- Hệ thống lưu tổng cộng dồn tất cả Gr.xxx (không cần tách từng Gr.xxx).
+- **allocatedMinutes:** số phút **đã được đặt vào schedule** (đã kéo vào line). Block chưa gán thì allocatedMinutes = 0; khi gán hết thì có thể xóa khỏi blocks.json hoặc đánh dấu trạng thái.
+- **status** (gợi ý): `Unassigned` (chưa gán), `FullyAssigned` (đã gán hết). Khi user kéo block từ line về lại danh sách chờ: cập nhật lại block trong blocks.json (allocatedMinutes = 0, status = Unassigned).
+- **Kéo block = kéo toàn bộ** (không có kéo một nửa). Ngoại trừ: phần vượt deadline được tách ra để kéo riêng.
 - **customDeadline:** nếu user ghi đè deadline riêng cho block thì lưu tại đây.
 
 ```json
@@ -250,6 +251,12 @@ Một block có thể chia thành nhiều phần nếu kéo qua nhiều ngày. K
 1. Xóa các phân mảnh (split block) trong `schedule.json`.
 2. Tính tổng số phút `allocatedMinutes` của các mảnh đó.
 3. Sinh lại một Block nguyên vẹn vào `blocks.json` để chờ xếp lịch tiếp.
+
+**Khi import MES mới (cập nhật open minutes):**
+- Block đã nằm trên line **giữ nguyên vị trí**, chỉ cập nhật số phút.
+- **Số phút giảm:** block tự co lại. Các split block trên schedule co lại tương ứng.
+- **Số phút tăng:** block tự mở rộng. Phần dư thêm vào trên schedule.
+- Mỗi khi có thay đổi, hệ thống **tự re-render** và đẩy block lên ngày sớm nhất có thể.
 
 ---
 

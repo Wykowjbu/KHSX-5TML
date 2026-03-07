@@ -6,16 +6,18 @@ Các yêu cầu này được gửi dưới dạng file Excel.
 
 File này chứa:
 
-- tên sản phẩm
-- nhóm sản phẩm
-- số lượng theo từng group
+- tên sản phẩm (cột A)
+- Gr.xxx (header cột E–J)
+- **số lượng sản phẩm** theo từng Gr.xxx (giá trị trong cột E–J). Lưu ý: đây là số lượng, **không phải số phút**. Cần nhân với `minutesPerProduct` để ra tổng số phút cần sản xuất.
+- tên nhóm sản phẩm (cột K) — ví dụ sp BM8R030110, BM8R031110, BM8R040110 đều có chung 1 tên nhóm sản phẩm là BM8R030
+- function (cột M)
 
 Vấn đề là việc lập kế hoạch sản xuất hiện đang thực hiện thủ công.
 
 Các khó khăn gồm:
 
 - nhiều line sản xuất
-- số người mỗi ca thay đổi
+- số người mỗi ca thay đổi, khác hiệu suất
 - deadline khác nhau
 - dữ liệu MES thay đổi mỗi ngày
 
