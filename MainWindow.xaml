@@ -75,7 +75,8 @@
             </Grid.ColumnDefinitions>
 
             <!-- Left Panel: Unassigned Blocks -->
-            <Border Grid.Column="0" BorderBrush="#ccc" BorderThickness="0,0,1,0" Padding="10" x:Name="LeftPanel">
+            <Border Grid.Column="0" BorderBrush="#ccc" BorderThickness="0,0,1,0" Padding="10" x:Name="LeftPanel"
+                    AllowDrop="True" Drop="UnassignedPanel_Drop" DragEnter="UnassignedPanel_DragEnter">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -169,13 +170,13 @@
                                         <DataTemplate DataType="{x:Type models:DayCell}">
                                             <Border Width="120" Height="100" 
                                                     BorderBrush="#aaa" BorderThickness="1" 
-                                                    AllowDrop="{Binding IsWeekend, Converter={StaticResource InverseBoolConverter}}"
+                                                    AllowDrop="{Binding IsDayOff, Converter={StaticResource InverseBoolConverter}}"
                                                     Drop="DayCell_Drop" DragEnter="DayCell_DragEnter"
                                                     MouseRightButtonUp="DayCell_RightClick"
                                                     Tag="{Binding}">
                                                 <Border.Background>
                                                     <MultiBinding Converter="{StaticResource DayCellBackgroundConverter}">
-                                                        <Binding Path="IsWeekend"/>
+                                                        <Binding Path="IsDayOff"/>
                                                         <Binding Path="HasCustomConfig"/>
                                                     </MultiBinding>
                                                 </Border.Background>

@@ -30,6 +30,7 @@ namespace KHSX.Models
             {
                 day.Config.Workers = DefaultConfig.Workers;
                 day.Config.Minutes = DefaultConfig.Minutes;
+                day.Config.Efficiency = DefaultConfig.Efficiency;
                 day.HasCustomConfig = false; // Reset tất cả về mặc định
             }
         }

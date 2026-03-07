@@ -28,6 +28,7 @@ namespace KHSX.Services
         {
             public DateTime Date { get; set; }
             public bool HasCustomConfig { get; set; }
+            public bool IsDayOff { get; set; }
             public ShiftData Config { get; set; } = new();
         }
 
@@ -35,6 +36,7 @@ namespace KHSX.Services
         {
             public double Workers { get; set; } = 1;
             public double Minutes { get; set; } = 480;
+            public double Efficiency { get; set; } = 1.15;
         }
 
         public void SaveConfiguration(DateTime startDate, DateTime deadlineDate, IEnumerable<ShiftRow> rows)
@@ -51,16 +53,19 @@ namespace KHSX.Services
                     DefaultConfig = new ShiftData
                     {
                         Workers = row.DefaultConfig.Workers,
-                        Minutes = row.DefaultConfig.Minutes
+                        Minutes = row.DefaultConfig.Minutes,
+                        Efficiency = row.DefaultConfig.Efficiency
                     },
                     Days = row.Days.Select(day => new DayCellConfig
                     {
                         Date = day.Date,
                         HasCustomConfig = day.HasCustomConfig,
+                        IsDayOff = day.IsDayOff,
                         Config = new ShiftData
                         {
                             Workers = day.Config.Workers,
-                            Minutes = day.Config.Minutes
+                            Minutes = day.Config.Minutes,
+                            Efficiency = day.Config.Efficiency
                         }
                     }).ToList()
                 }).ToList()
@@ -98,13 +103,20 @@ namespace KHSX.Services
                 
                 row.DefaultConfig.Workers = rowConfig.DefaultConfig.Workers;
                 row.DefaultConfig.Minutes = rowConfig.DefaultConfig.Minutes;
+                row.DefaultConfig.Efficiency = rowConfig.DefaultConfig.Efficiency;
                 
                 foreach (var dayConfig in rowConfig.Days)
                 {
                     var day = new DayCell(dayConfig.Date);
                     day.HasCustomConfig = dayConfig.HasCustomConfig;
+                    // Nếu dữ liệu cũ chưa có IsDayOff (default false) và chưa custom → dùng mặc định theo lịch
+                    if (!dayConfig.IsDayOff && !dayConfig.HasCustomConfig && day.IsWeekend)
+                        day.IsDayOff = true;
+                    else
+                        day.IsDayOff = dayConfig.IsDayOff;
                     day.Config.Workers = dayConfig.Config.Workers;
                     day.Config.Minutes = dayConfig.Config.Minutes;
+                    day.Config.Efficiency = dayConfig.Config.Efficiency > 0 ? dayConfig.Config.Efficiency : 1.15;
                     row.Days.Add(day);
                 }
                 

@@ -10,7 +10,10 @@ namespace KHSX.Models
         [ObservableProperty]
         private double minutes = 480; // Số phút làm việc (8 giờ mặc định)
 
-        public double TotalCapacity => Workers * Minutes; // Tổng công suất
+        [ObservableProperty]
+        private double efficiency = 1.15; // Hiệu suất (mặc định 115%)
+
+        public double TotalCapacity => Workers * Minutes * Efficiency; // Tổng công suất
 
         partial void OnWorkersChanged(double value)
         {
@@ -18,6 +21,11 @@ namespace KHSX.Models
         }
 
         partial void OnMinutesChanged(double value)
+        {
+            OnPropertyChanged(nameof(TotalCapacity));
+        }
+
+        partial void OnEfficiencyChanged(double value)
         {
             OnPropertyChanged(nameof(TotalCapacity));
         }

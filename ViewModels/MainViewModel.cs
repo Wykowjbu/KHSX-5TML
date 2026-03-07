@@ -66,6 +66,7 @@ namespace KHSX.ViewModels
                     dayCellA.HasCustomConfig = false;
                     dayCellA.Config.Workers = rowA.DefaultConfig.Workers;
                     dayCellA.Config.Minutes = rowA.DefaultConfig.Minutes;
+                    dayCellA.Config.Efficiency = rowA.DefaultConfig.Efficiency;
                     rowA.Days.Add(dayCellA);
                     
                     var dayCellB = new DayCell(date);
@@ -73,6 +74,7 @@ namespace KHSX.ViewModels
                     dayCellB.HasCustomConfig = false;
                     dayCellB.Config.Workers = rowB.DefaultConfig.Workers;
                     dayCellB.Config.Minutes = rowB.DefaultConfig.Minutes;
+                    dayCellB.Config.Efficiency = rowB.DefaultConfig.Efficiency;
                     rowB.Days.Add(dayCellB);
                 }
                 
@@ -479,6 +481,7 @@ namespace KHSX.ViewModels
                 dayCellA.HasCustomConfig = false;
                 dayCellA.Config.Workers = rowA.DefaultConfig.Workers;
                 dayCellA.Config.Minutes = rowA.DefaultConfig.Minutes;
+                dayCellA.Config.Efficiency = rowA.DefaultConfig.Efficiency;
                 rowA.Days.Add(dayCellA);
                 
                 var dayCellB = new DayCell(date);
@@ -486,6 +489,7 @@ namespace KHSX.ViewModels
                 dayCellB.HasCustomConfig = false;
                 dayCellB.Config.Workers = rowB.DefaultConfig.Workers;
                 dayCellB.Config.Minutes = rowB.DefaultConfig.Minutes;
+                dayCellB.Config.Efficiency = rowB.DefaultConfig.Efficiency;
                 rowB.Days.Add(dayCellB);
             }
             
@@ -631,6 +635,58 @@ namespace KHSX.ViewModels
             }
 
             // Lưu lại thông tin lưới sau khi kéo thả thành công
+            SaveConfiguration();
+        }
+
+        /// <summary>
+        /// Kéo block từ grid trả về danh sách chưa gán
+        /// </summary>
+        public void HandleReturnToUnassigned(ProductBlock droppedBlock)
+        {
+            Guid parentId = droppedBlock.ParentId ?? droppedBlock.Id;
+
+            // Tính tổng phút của tất cả splits cùng parentId trên grid
+            double totalMinutes = 0;
+            foreach (var row in Rows)
+            {
+                foreach (var day in row.Days)
+                {
+                    foreach (var b in day.Blocks)
+                    {
+                        if (b.ParentId == parentId || b.Id == parentId)
+                        {
+                            totalMinutes += b.AllocatedMinutes;
+                        }
+                    }
+                }
+            }
+            totalMinutes = Math.Round(totalMinutes, 2);
+
+            // Xóa tất cả splits khỏi grid
+            RemoveBlockFromGrid(parentId);
+
+            // Ghép với block đã có trong unassigned nếu cùng parentId
+            var existingUnassigned = UnassignedBlocks.FirstOrDefault(b => b.ParentId == parentId || b.Id == parentId);
+            if (existingUnassigned != null)
+            {
+                existingUnassigned.AllocatedMinutes += totalMinutes;
+            }
+            else
+            {
+                var returnedBlock = new ProductBlock
+                {
+                    ParentId = parentId,
+                    SourceId = droppedBlock.SourceId,
+                    Code = droppedBlock.Code,
+                    ProductionGroup = droppedBlock.ProductionGroup,
+                    FunctionName = droppedBlock.FunctionName,
+                    TotalMinutesRequired = droppedBlock.TotalMinutesRequired,
+                    AllocatedMinutes = totalMinutes,
+                    DisplayColor = droppedBlock.DisplayColor
+                };
+                UnassignedBlocks.Add(returnedBlock);
+            }
+
             SaveConfiguration();
         }
 
@@ -784,10 +840,10 @@ namespace KHSX.ViewModels
             {
                 var workDay = targetRow.Days[dayIndex];
                 
-                if (workDay.IsWeekend)
+                if (workDay.IsDayOff)
                 {
                     dayIndex++;
-                    continue; // Skip sunday
+                    continue; // Skip ngày nghỉ
                 }
 
                 double available = Math.Round(workDay.AvailableMinutes, 2);

@@ -401,6 +401,43 @@ namespace KHSX
             }
         }
 
+        private void UnassignedPanel_DragEnter(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent("ProductBlock"))
+            {
+                var block = e.Data.GetData("ProductBlock") as ProductBlock;
+                var vm = this.DataContext as MainViewModel;
+                // Chỉ cho phép drop block từ grid (không phải từ unassigned)
+                if (block != null && vm != null && !vm.UnassignedBlocks.Contains(block))
+                {
+                    e.Effects = DragDropEffects.Move;
+                }
+                else
+                {
+                    e.Effects = DragDropEffects.None;
+                }
+            }
+            else
+            {
+                e.Effects = DragDropEffects.None;
+            }
+            e.Handled = true;
+        }
+
+        private void UnassignedPanel_Drop(object sender, DragEventArgs e)
+        {
+            if (e.Data.GetDataPresent("ProductBlock"))
+            {
+                var block = e.Data.GetData("ProductBlock") as ProductBlock;
+                var vm = this.DataContext as MainViewModel;
+                if (block != null && vm != null && !vm.UnassignedBlocks.Contains(block))
+                {
+                    vm.HandleReturnToUnassigned(block);
+                    vm.SaveConfigurationCommand.Execute(null);
+                }
+            }
+        }
+
         private void DayCell_Drop(object sender, DragEventArgs e)
         {
             if (e.Data.GetDataPresent("ProductBlock"))
@@ -424,7 +461,7 @@ namespace KHSX
 
         private void DayCell_RightClick(object sender, MouseButtonEventArgs e)
         {
-            if (sender is Border border && border.Tag is DayCell day && !day.IsWeekend)
+            if (sender is Border border && border.Tag is DayCell day)
             {
                 ShowEditShiftDialog(day);
             }
@@ -624,7 +661,7 @@ namespace KHSX
 
             var dialog = new Window
             {
-                Title = $"Chỉnh sửa cấu hình - {day.Date:dd/MM/yyyy}",
+                Title = $"Chỉnh sửa cấu hình - {day.Date:dd/MM/yyyy} ({day.Date:dddd})",
                 Width = 450,
                 SizeToContent = SizeToContent.Height,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
@@ -638,8 +675,8 @@ namespace KHSX
             var buttonPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 12, 0, 0) };
             DockPanel.SetDock(buttonPanel, Dock.Bottom);
 
-            // Reset button (only show if has custom config)
-            if (day.HasCustomConfig)
+            // Reset button (only show if has custom config or day off toggled)
+            if (day.HasCustomConfig || (day.IsWeekend != day.IsDayOff))
             {
                 var resetButton = new Button
                 {
@@ -652,8 +689,10 @@ namespace KHSX
                 };
                 resetButton.Click += (s, e) =>
                 {
+                    day.IsDayOff = day.IsWeekend; // Reset về mặc định theo lịch
                     day.Config.Workers = parentRow.DefaultConfig.Workers;
                     day.Config.Minutes = parentRow.DefaultConfig.Minutes;
+                    day.Config.Efficiency = parentRow.DefaultConfig.Efficiency;
                     day.HasCustomConfig = false;
                     vm?.SaveConfigurationCommand.Execute(null);
                     MessageBox.Show("Đã reset về cấu hình mặc định của ca", "Thành công", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -663,18 +702,7 @@ namespace KHSX
             }
 
             var saveButton = new Button { Content = "Lưu", Width = 80, Height = 30, Margin = new Thickness(0, 0, 10, 0) };
-            saveButton.Click += (s, e) =>
-            {
-                bool isDifferent = 
-                    day.Config.Workers != parentRow.DefaultConfig.Workers ||
-                    day.Config.Minutes != parentRow.DefaultConfig.Minutes;
-                day.HasCustomConfig = isDifferent;
-                vm?.SaveConfigurationCommand.Execute(null);
-                dialog.DialogResult = true;
-            };
-
             var cancelButton = new Button { Content = "Hủy", Width = 80, Height = 30 };
-            cancelButton.Click += (s, e) => dialog.DialogResult = false;
 
             buttonPanel.Children.Add(saveButton);
             buttonPanel.Children.Add(cancelButton);
@@ -682,6 +710,36 @@ namespace KHSX
 
             // Content
             var contentPanel = new StackPanel();
+
+            // === Toggle Ngày nghỉ / Ngày làm ===
+            var dayOffPanel = new StackPanel { Margin = new Thickness(0, 0, 0, 15) };
+
+            string statusText = day.IsDayOff ? "🔴 Ngày này đang NGHỈ" : "🟢 Ngày này đang LÀM VIỆC";
+            if (day.IsWeekend) statusText += " (Chủ nhật)";
+
+            var statusBlock = new TextBlock
+            {
+                Text = statusText,
+                FontWeight = FontWeights.Bold,
+                FontSize = 14,
+                Margin = new Thickness(0, 0, 0, 8)
+            };
+            dayOffPanel.Children.Add(statusBlock);
+
+            var toggleDayOffCheckBox = new System.Windows.Controls.CheckBox
+            {
+                Content = "Đánh dấu là ngày nghỉ (không lên lịch sản xuất)",
+                IsChecked = day.IsDayOff,
+                FontSize = 13,
+                Margin = new Thickness(0, 0, 0, 5)
+            };
+            dayOffPanel.Children.Add(toggleDayOffCheckBox);
+
+            contentPanel.Children.Add(dayOffPanel);
+            contentPanel.Children.Add(new Separator { Margin = new Thickness(0, 0, 0, 10) });
+
+            // === Cấu hình ca (ẩn/hiện theo trạng thái ngày nghỉ) ===
+            var configSection = new StackPanel();
 
             var infoText = new TextBlock
             {
@@ -692,12 +750,57 @@ namespace KHSX
                 FontStyle = FontStyles.Italic,
                 FontWeight = FontWeights.Bold
             };
-            contentPanel.Children.Add(infoText);
+            configSection.Children.Add(infoText);
 
             var configPanel = CreateShiftPanel("Cấu hình ca", day.Config);
-            contentPanel.Children.Add(configPanel);
+            configSection.Children.Add(configPanel);
+            configSection.Visibility = day.IsDayOff ? Visibility.Collapsed : Visibility.Visible;
+
+            // Toggle hiện/ẩn cấu hình khi check/uncheck ngày nghỉ
+            toggleDayOffCheckBox.Checked += (s, e) => configSection.Visibility = Visibility.Collapsed;
+            toggleDayOffCheckBox.Unchecked += (s, e) =>
+            {
+                configSection.Visibility = Visibility.Visible;
+                // Nếu đang là chủ nhật mở lại làm → set workers/minutes/efficiency từ default của line
+                if (day.IsDayOff && day.IsWeekend)
+                {
+                    day.Config.Workers = parentRow.DefaultConfig.Workers;
+                    day.Config.Minutes = parentRow.DefaultConfig.Minutes;
+                    day.Config.Efficiency = parentRow.DefaultConfig.Efficiency;
+                }
+            };
+
+            contentPanel.Children.Add(configSection);
             contentPanel.Children.Add(new Separator { Margin = new Thickness(0, 10, 0, 0) });
             rootPanel.Children.Add(contentPanel);
+
+            // Save logic
+            saveButton.Click += (s, e) =>
+            {
+                bool wasDayOff = day.IsDayOff;
+                bool newIsDayOff = toggleDayOffCheckBox.IsChecked == true;
+                day.IsDayOff = newIsDayOff;
+
+                if (!newIsDayOff)
+                {
+                    // Ngày làm việc: kiểm tra custom config
+                    bool isDifferent =
+                        day.Config.Workers != parentRow.DefaultConfig.Workers ||
+                        day.Config.Minutes != parentRow.DefaultConfig.Minutes ||
+                        day.Config.Efficiency != parentRow.DefaultConfig.Efficiency;
+                    day.HasCustomConfig = isDifferent || (day.IsWeekend != day.IsDayOff);
+                }
+                else
+                {
+                    // Ngày nghỉ
+                    day.HasCustomConfig = (day.IsWeekend != day.IsDayOff);
+                }
+
+                vm?.SaveConfigurationCommand.Execute(null);
+                dialog.DialogResult = true;
+            };
+
+            cancelButton.Click += (s, e) => dialog.DialogResult = false;
 
             dialog.Content = rootPanel;
             dialog.ShowDialog();
@@ -762,6 +865,35 @@ namespace KHSX
             };
             minutesPanel.Children.Add(minutesBox);
             panel.Children.Add(minutesPanel);
+
+            // Efficiency
+            var effPanel = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 10, 0, 0) };
+            effPanel.Children.Add(new TextBlock { Text = "Hiệu suất:", Width = 100, VerticalAlignment = VerticalAlignment.Center });
+            var effBox = new TextBox
+            {
+                Width = 100,
+                Text = shift.Efficiency.ToString("0.##")
+            };
+            effPanel.Children.Add(effBox);
+            effPanel.Children.Add(new TextBlock
+            {
+                Text = "  (VD: 1.15 = 115%)",
+                Foreground = System.Windows.Media.Brushes.Gray,
+                FontSize = 11,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            effBox.TextChanged += (s, e) =>
+            {
+                if (double.TryParse(effBox.Text, out double value) && value > 0)
+                {
+                    shift.Efficiency = value;
+                }
+            };
+            effBox.LostFocus += (s, e) =>
+            {
+                effBox.Text = shift.Efficiency.ToString("0.##");
+            };
+            panel.Children.Add(effPanel);
 
             return panel;
         }
@@ -865,23 +997,23 @@ namespace KHSX
         {
             if (values.Length >= 2)
             {
-                bool isWeekend = values[0] is bool w && w;
+                bool isDayOff = values[0] is bool w && w;
                 bool hasCustomConfig = values[1] is bool c && c;
 
-                if (isWeekend)
+                if (isDayOff)
                 {
-                    // Weekend với custom: vàng nhạt hơn xám
+                    // Ngày nghỉ với custom: vàng nhạt hơn xám
                     if (hasCustomConfig)
                         return new SolidColorBrush(Color.FromRgb(240, 230, 200));
-                    // Weekend bình thường: xám
+                    // Ngày nghỉ bình thường: xám
                     return new SolidColorBrush(Color.FromRgb(220, 220, 220));
                 }
                 else
                 {
-                    // Ngày thường với custom: vàng nhạt
+                    // Ngày làm với custom: vàng nhạt
                     if (hasCustomConfig)
                         return new SolidColorBrush(Color.FromRgb(255, 248, 220));
-                    // Ngày thường bình thường: trắng
+                    // Ngày làm bình thường: trắng
                     return Brushes.White;
                 }
             }

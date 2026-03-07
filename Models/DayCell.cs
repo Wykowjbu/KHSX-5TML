@@ -7,13 +7,14 @@ namespace KHSX.Models
 {
     public partial class DayCell : ObservableObject
     {
-        private const double EfficiencyRate = 1.15; // 115% hiệu suất
-
         [ObservableProperty]
         private DateTime date;
 
         [ObservableProperty]
         private bool isWeekend;
+
+        [ObservableProperty]
+        private bool isDayOff; // True = ngày nghỉ (không lên lịch được)
 
         [ObservableProperty]
         private bool isDeadline;
@@ -24,7 +25,7 @@ namespace KHSX.Models
         [ObservableProperty]
         private ShiftConfig config = new ShiftConfig { Workers = 1, Minutes = 480 };
 
-        public double TotalCapacity => Config.TotalCapacity * EfficiencyRate;
+        public double TotalCapacity => Config.TotalCapacity;
 
         public ObservableCollection<ProductBlock> Blocks { get; } = new ObservableCollection<ProductBlock>();
 
@@ -32,6 +33,7 @@ namespace KHSX.Models
         {
             Date = date;
             IsWeekend = date.DayOfWeek == DayOfWeek.Sunday;
+            IsDayOff = IsWeekend; // Chủ nhật mặc định nghỉ
             
             Blocks.CollectionChanged += (s, e) => 
             {
@@ -53,8 +55,15 @@ namespace KHSX.Models
 
         public double AvailableMinutes => Math.Max(0, TotalCapacity - TotalUsed);
 
-        public string WatermarkText => IsWeekend ? "Nghỉ" : 
-            $"{Config.Workers:0.##}per({Config.Minutes:0.##}){(HasCustomConfig ? "*" : "")}\n" +
+        public string WatermarkText => IsDayOff ? "Nghỉ" : 
+            $"{Config.Workers:0.##}per({Config.Minutes:0.##})x{Config.Efficiency:0.##}{(HasCustomConfig ? "*" : "")}\n" +
             $"Total: {TotalCapacity:0.#}";
+
+        partial void OnIsDayOffChanged(bool value)
+        {
+            OnPropertyChanged(nameof(WatermarkText));
+            OnPropertyChanged(nameof(TotalCapacity));
+            OnPropertyChanged(nameof(AvailableMinutes));
+        }
     }
 }
