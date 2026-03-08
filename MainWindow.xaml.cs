@@ -19,7 +19,6 @@ namespace KHSX
             if (this.DataContext is MainViewModel vm)
             {
                 vm.RequestDeadlineDialog += ShowDeadlineConfigDialog;
-                vm.RequestSelectGroupDialog += ShowSelectCurrentGroupDialog;
                 vm.RequestConfigGroupsDialog += ShowConfigGroupsDialog;
             }
         }
@@ -168,94 +167,36 @@ namespace KHSX
             var cancelBtn = new Button { Content = "Hủy", Width = 80, Height = 30 };
             cancelBtn.Click += (s, e) => dialog.DialogResult = false;
 
+            var setMaxGrBtn = new Button { Content = "Set tất cả thành Max Gr.xxx", Width = 180, Height = 30, Margin = new Thickness(0, 0, 10, 0), Background = new SolidColorBrush(Color.FromRgb(255, 152, 0)), Foreground = Brushes.White };
+            setMaxGrBtn.Click += (s, e) =>
+            {
+                var maxGr = availableGr.Where(g => !string.IsNullOrEmpty(g)).OrderByDescending(g => g).FirstOrDefault();
+                if (string.IsNullOrEmpty(maxGr))
+                {
+                    MessageBox.Show("Không tìm thấy mã Gr.xxx nào trong dữ liệu Product hiện tại.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                var confirmed = MessageBox.Show(
+                    $"Bạn có chắc chắn muốn thiết lập mặc định '{maxGr}' cho TẤT CẢ các dòng không?",
+                    "Xác nhận thay đổi hàng loạt",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+
+                if (confirmed == MessageBoxResult.Yes)
+                {
+                    foreach (var cb in groupBoxes.Values)
+                    {
+                        cb.SelectedItem = maxGr;
+                    }
+                }
+            };
+
+            buttonPanel.Children.Add(setMaxGrBtn);
             buttonPanel.Children.Add(saveBtn);
             buttonPanel.Children.Add(cancelBtn);
             rootPanel.Children.Add(buttonPanel);
             rootPanel.Children.Add(scrollView);
-
-            dialog.Content = rootPanel;
-            dialog.ShowDialog();
-        }
-
-        private void ShowSelectCurrentGroupDialog()
-        {
-            var groups = Services.JsonStorage.Load<System.Collections.Generic.List<ProductGroupData>>("productGroups.json");
-            if (groups == null || groups.Count == 0)
-            {
-                MessageBox.Show("Chưa có dữ liệu Marketing. Vui lòng Import Marketing lại.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            var dialog = new Window
-            {
-                Title = "Chọn Dòng Group Sản Xuất Hiện Tại (Current Group)",
-                Width = 420,
-                SizeToContent = SizeToContent.Height,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                Owner = this,
-                ResizeMode = ResizeMode.NoResize
-            };
-
-            var rootPanel = new DockPanel { Margin = new Thickness(20) };
-
-            // Button panel - docked bottom
-            var buttonPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 15, 0, 0) };
-            DockPanel.SetDock(buttonPanel, Dock.Bottom);
-            
-            var saveBtn = new Button { Content = "Xác nhận & Lưu", Width = 120, Height = 30, Margin = new Thickness(0, 0, 10, 0), Background = new SolidColorBrush(Color.FromRgb(33, 150, 243)), Foreground = Brushes.White };
-            var cancelBtn = new Button { Content = "Hủy", Width = 80, Height = 30 };
-            buttonPanel.Children.Add(saveBtn);
-            buttonPanel.Children.Add(cancelBtn);
-            rootPanel.Children.Add(buttonPanel);
-
-            // Content
-            var contentPanel = new StackPanel();
-            DockPanel.SetDock(contentPanel, Dock.Top);
-
-            var infoText = new TextBlock
-            {
-                Text = "Vui lòng chọn Group (Gr.xxx) hiện tại mà MES đang chạy để hệ thống làm cơ sở tính toán Open Minutes. Thiết lập này sẽ quyết định tính năng cắt gọt deadline.",
-                TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 0, 0, 15),
-                Foreground = Brushes.DarkBlue
-            };
-            contentPanel.Children.Add(infoText);
-
-            var comboBox = new ComboBox
-            {
-                Height = 30,
-                Margin = new Thickness(0, 0, 0, 5),
-                DisplayMemberPath = "Name",
-                SelectedValuePath = "GroupId",
-                ItemsSource = groups
-            };
-
-            // Load existing setting to pre-select
-            var settings = Services.JsonStorage.Load<SettingsData>("settings.json") ?? new SettingsData();
-            if (!string.IsNullOrEmpty(settings.CurrentMESGroup))
-            {
-                comboBox.SelectedValue = settings.CurrentMESGroup;
-            }
-            else if (groups.Count > 0)
-            {
-                comboBox.SelectedIndex = 0;
-            }
-
-            contentPanel.Children.Add(comboBox);
-            rootPanel.Children.Add(contentPanel);
-
-            saveBtn.Click += (s, e) =>
-            {
-                if (comboBox.SelectedValue != null)
-                {
-                    settings.CurrentMESGroup = comboBox.SelectedValue.ToString() ?? "";
-                    Services.JsonStorage.Save("settings.json", settings);
-                    
-                    MessageBox.Show("Đã lưu Current Group!\n\nHãy tiếp tục bước Thiết Lập Deadline và Import MES.", "Thành công", MessageBoxButton.OK, MessageBoxImage.Information);
-                    dialog.DialogResult = true;
-                }
-            };
-            cancelBtn.Click += (s, e) => dialog.DialogResult = false;
 
             dialog.Content = rootPanel;
             dialog.ShowDialog();

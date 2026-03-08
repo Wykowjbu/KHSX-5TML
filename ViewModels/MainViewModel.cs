@@ -123,11 +123,11 @@ namespace KHSX.ViewModels
                 try
                 {
                     _excelService.ImportMarketing(dialog.FileName);
-                    RequestSelectGroupDialog?.Invoke(); // Trigger Dialog chọn Current Group
+                    MessageBox.Show("Nhập dữ liệu Marketing thành công!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(ex.Message, "Lỗi Import Marketing", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show($"Lỗi khi import file Marketing: {ex.Message}", "Lỗi Import", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
         }
@@ -342,7 +342,6 @@ namespace KHSX.ViewModels
         }
 
         public event Action RequestDeadlineDialog;
-        public event Action RequestSelectGroupDialog;
         public event Action RequestConfigGroupsDialog;
 
         [RelayCommand]
