@@ -54,8 +54,8 @@ namespace KHSX.ViewModels
             Rows.Clear();
             for (int i = 1; i <= 5; i++)
             {
-                var rowA = new ShiftRow($"Line {i}", "A");
-                var rowB = new ShiftRow($"Line {i}", "B");
+                var rowA = new ShiftRow($"Line {i}", "A") { DisplayIndex = i.ToString() };
+                var rowB = new ShiftRow($"Line {i}", "B") { DisplayIndex = i.ToString() };
                 
                 for (int d = 0; d < 30; d++)
                 {
@@ -123,11 +123,11 @@ namespace KHSX.ViewModels
                 try
                 {
                     _excelService.ImportMarketing(dialog.FileName);
-                    RequestSelectGroupDialog?.Invoke(); // Trigger Dialog chọn Current Group
+                    MessageBox.Show("Nhập dữ liệu Marketing thành công!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show(ex.Message, "Lỗi Import Marketing", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show($"Lỗi khi import file Marketing: {ex.Message}", "Lỗi Import", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
         }
@@ -342,7 +342,6 @@ namespace KHSX.ViewModels
         }
 
         public event Action RequestDeadlineDialog;
-        public event Action RequestSelectGroupDialog;
         public event Action RequestConfigGroupsDialog;
 
         [RelayCommand]
@@ -468,9 +467,10 @@ namespace KHSX.ViewModels
         private void AddLine()
         {
             // Thay vì count row, lấy số line = count/2
-            var newLineName = $"Line {(Rows.Count / 2) + 1}";
-            var rowA = new ShiftRow(newLineName, "A");
-            var rowB = new ShiftRow(newLineName, "B");
+            int newIndex = (Rows.Count / 2) + 1;
+            var newLineName = $"Line {newIndex}";
+            var rowA = new ShiftRow(newLineName, "A") { DisplayIndex = newIndex.ToString() };
+            var rowB = new ShiftRow(newLineName, "B") { DisplayIndex = newIndex.ToString() };
             
             for (int d = 0; d < 30; d++)
             {

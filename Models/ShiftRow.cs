@@ -9,6 +9,9 @@ namespace KHSX.Models
         [ObservableProperty]
         private string rowName = string.Empty;
 
+        [ObservableProperty]
+        private string displayIndex = string.Empty;
+
         public string ParentLineName { get; set; } = string.Empty;
         public string ShiftName { get; set; } = string.Empty; // "A" or "B"
 

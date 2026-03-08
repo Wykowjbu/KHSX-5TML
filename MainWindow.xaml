@@ -23,6 +23,7 @@
         <local:CustomConfigBackgroundConverter x:Key="CustomConfigBackgroundConverter"/>
         <local:DayCellBackgroundConverter x:Key="DayCellBackgroundConverter"/>
         <local:PercentageToWidthConverter x:Key="PercentageToWidthConverter"/>
+        <local:NumberDivider x:Key="NumberDivider"/>
         
         <!-- DataTemplate mặc định cho block trên grid -->
         <DataTemplate DataType="{x:Type models:ProductBlock}">
@@ -121,12 +122,22 @@
 
             <!-- Right Panel: Gantt Chart -->
             <ScrollViewer Grid.Column="2" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
-                <ItemsControl ItemsSource="{Binding Rows}" Margin="10">
+                <ItemsControl ItemsSource="{Binding Rows}" Margin="10" AlternationCount="2">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate DataType="{x:Type models:ShiftRow}">
                             <Grid Margin="0,0,0,10">
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Background" Value="Transparent"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=ContentPresenter}, Path=(ItemsControl.AlternationIndex)}" Value="1">
+                                                <Setter Property="Background" Value="#F2F9FF"/> <!-- Màu nền xen kẽ (xanh lam siêu nhạt) -->
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="120"/>
+                                    <ColumnDefinition Width="160"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
 
@@ -134,12 +145,25 @@
                                 <Border Background="#ddd" BorderBrush="#aaa" BorderThickness="1" Padding="5"
                                         Tag="{Binding}">
                                     <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="40"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="*"/>
                                             <RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
                                         
-                                        <TextBlock Grid.Row="0" Text="{Binding RowName}" 
+                                        <TextBox Grid.Column="0" Grid.Row="0" Grid.RowSpan="2"
+                                                 Text="{Binding DisplayIndex, UpdateSourceTrigger=PropertyChanged}" 
+                                                 LostFocus="DisplayIndex_LostFocus" KeyDown="DisplayIndex_KeyDown"
+                                                 VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
+                                                 HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
+                                                 FontWeight="Bold" FontSize="14" Background="White" Margin="0,0,5,0"
+                                                 BorderBrush="#ccc" BorderThickness="1"
+                                                 ToolTip="Số thứ tự xếp hạng (Có thể chỉnh sửa tuỳ ý)"/>
+                                        
+                                        <TextBlock Grid.Column="1" Grid.Row="0" Text="{Binding RowName}" 
                                                    VerticalAlignment="Center" HorizontalAlignment="Center" 
                                                    FontWeight="Bold"
                                                    FontSize="11"
@@ -149,7 +173,7 @@
                                                    Cursor="Hand"
                                                    ToolTip="Click để đổi tên và cấu hình ca"/>
                                         
-                                        <Button Grid.Row="1" Content="🗑️" 
+                                        <Button Grid.Column="1" Grid.Row="1" Content="🗑️" 
                                                 Command="{Binding DataContext.RemoveLineCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                 CommandParameter="{Binding}"
                                                 Width="60" Height="25" Margin="0,5,0,0"
@@ -168,7 +192,7 @@
                                     </ItemsControl.ItemsPanel>
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate DataType="{x:Type models:DayCell}">
-                                            <Border Width="120" Height="100" 
+                                            <Border x:Name="CellBorder" Width="120" Height="100" 
                                                     BorderBrush="#aaa" BorderThickness="1" 
                                                     AllowDrop="{Binding IsDayOff, Converter={StaticResource InverseBoolConverter}}"
                                                     Drop="DayCell_Drop" DragEnter="DayCell_DragEnter"
@@ -202,12 +226,34 @@
                                                                Margin="0,0,0,2" Panel.ZIndex="0" TextWrapping="Wrap"/>
 
                                                     <!-- Assigned Blocks -->
-                                                    <ItemsControl Grid.Row="1" ItemsSource="{Binding Blocks}" Panel.ZIndex="1" VerticalAlignment="Top">
+                                                    <ItemsControl Grid.Row="1" ItemsSource="{Binding Blocks}" Panel.ZIndex="1" VerticalAlignment="Stretch">
                                                         <ItemsControl.ItemsPanel>
                                                             <ItemsPanelTemplate>
-                                                                <StackPanel Orientation="Vertical"/>
+                                                                <UniformGrid VerticalAlignment="Top"/>
                                                             </ItemsPanelTemplate>
                                                         </ItemsControl.ItemsPanel>
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate DataType="{x:Type models:ProductBlock}">
+                                                                <Border Background="{Binding DisplayColor}" 
+                                                                        BorderBrush="{Binding IsExceedingDeadline, Converter={StaticResource BoolToRedBorderConverter}}" 
+                                                                        BorderThickness="{Binding IsExceedingDeadline, Converter={StaticResource BoolToBorderThicknessConverter}}" 
+                                                                        Margin="1" 
+                                                                        Padding="2" 
+                                                                        CornerRadius="3"
+                                                                        MouseMove="ProductBlock_MouseMove"
+                                                                        Cursor="Hand"
+                                                                        ToolTip="{Binding TooltipText}">
+                                                                    <!-- Chiều rộng tự động chia trong WrapPanel hoặc UniformGrid -->
+                                                                    <TextBlock Text="{Binding DisplayText}" 
+                                                                               FontWeight="Bold" 
+                                                                               Foreground="DarkSlateGray" 
+                                                                               FontSize="9"
+                                                                               LineHeight="10"
+                                                                               TextWrapping="Wrap"
+                                                                               TextAlignment="Center"/>
+                                                                </Border>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
                                                     </ItemsControl>
                                                 </Grid>
                                             </Border>
