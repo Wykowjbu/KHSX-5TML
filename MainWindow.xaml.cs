@@ -475,6 +475,35 @@ namespace KHSX
             }
         }
 
+        private void DisplayIndex_LostFocus(object sender, RoutedEventArgs e)
+        {
+            if (this.DataContext is MainViewModel vm)
+            {
+                vm.SaveConfigurationCommand.Execute(null);
+            }
+        }
+
+        private void DisplayIndex_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                if (sender is TextBox textBox)
+                {
+                    // Update layout and trigger binding just in case
+                    var bindingExpression = textBox.GetBindingExpression(TextBox.TextProperty);
+                    bindingExpression?.UpdateSource();
+                }
+
+                if (this.DataContext is MainViewModel vm)
+                {
+                    vm.SaveConfigurationCommand.Execute(null);
+                }
+                
+                // Remove focus to trigger normal view
+                Keyboard.ClearFocus();
+            }
+        }
+
         private void LineName_RightClick(object sender, MouseButtonEventArgs e)
         {
             if (sender is Border border && border.Tag is ShiftRow row)

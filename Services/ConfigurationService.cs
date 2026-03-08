@@ -18,6 +18,7 @@ namespace KHSX.Services
         public class RowConfig
         {
             public string RowName { get; set; } = string.Empty;
+            public string DisplayIndex { get; set; } = string.Empty;
             public string ParentLineName { get; set; } = string.Empty;
             public string ShiftName { get; set; } = string.Empty;
             public ShiftData DefaultConfig { get; set; } = new();
@@ -48,6 +49,7 @@ namespace KHSX.Services
                 Rows = rows.Select(row => new RowConfig
                 {
                     RowName = row.RowName,
+                    DisplayIndex = row.DisplayIndex,
                     ParentLineName = row.ParentLineName,
                     ShiftName = row.ShiftName,
                     DefaultConfig = new ShiftData
@@ -99,6 +101,10 @@ namespace KHSX.Services
                 if (!string.IsNullOrEmpty(rowConfig.RowName))
                 {
                     row.RowName = rowConfig.RowName;
+                }
+                if (!string.IsNullOrEmpty(rowConfig.DisplayIndex))
+                {
+                    row.DisplayIndex = rowConfig.DisplayIndex;
                 }
                 
                 row.DefaultConfig.Workers = rowConfig.DefaultConfig.Workers;
