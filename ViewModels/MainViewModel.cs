@@ -106,7 +106,124 @@ namespace KHSX.ViewModels
         {
             if (_isLoading) return; // Bỏ qua nếu đang nạp dữ liệu từ json
 
-            InitializeRows();
+            if (Rows.Count == 0 || Rows[0].Days.Count == 0)
+            {
+                InitializeRows();
+                SaveConfiguration();
+                return;
+            }
+
+            var oldStartDate = Rows[0].Days[0].Date.Date;
+            var newStartDate = value.Date;
+            var dayOffset = (newStartDate - oldStartDate).Days;
+            if (dayOffset == 0) return;
+
+            // BƯỚC 1: Thu thập toàn bộ blocks của từng row (gộp các split cùng ParentId)
+            // Lưu theo cấu trúc: rowName -> danh sách block đã gộp (mỗi parentId 1 block)
+            var rowBlocksMap = new Dictionary<string, List<ProductBlock>>();
+            foreach (var row in Rows)
+            {
+                var mergedBlocks = new Dictionary<Guid, ProductBlock>();
+                foreach (var day in row.Days)
+                {
+                    foreach (var block in day.Blocks)
+                    {
+                        var pid = block.ParentId ?? block.Id;
+                        if (mergedBlocks.TryGetValue(pid, out var existing))
+                        {
+                            existing.AllocatedMinutes = Math.Round(existing.AllocatedMinutes + block.AllocatedMinutes, 2);
+                        }
+                        else
+                        {
+                            mergedBlocks[pid] = new ProductBlock
+                            {
+                                ParentId = pid,
+                                SourceId = block.SourceId,
+                                Code = block.Code,
+                                ProductionGroup = block.ProductionGroup,
+                                FunctionName = block.FunctionName,
+                                TotalMinutesRequired = block.TotalMinutesRequired,
+                                AllocatedMinutes = block.AllocatedMinutes,
+                                DisplayColor = block.DisplayColor
+                            };
+                        }
+                    }
+                }
+                rowBlocksMap[row.RowName] = mergedBlocks.Values.ToList();
+            }
+
+            // BƯỚC 2a: Snapshot custom configs theo ngày tuyệt đối TRƯỚC khi dịch
+            // Key: (rowName, date) → vì config có thể khác nhau giữa row A và B 
+            var customConfigSnapshot = new Dictionary<(string rowName, DateTime date), (double workers, double minutes, double efficiency, bool isDayOff)>();
+            foreach (var row in Rows)
+            {
+                foreach (var day in row.Days)
+                {
+                    if (day.HasCustomConfig)
+                    {
+                        customConfigSnapshot[(row.RowName, day.Date.Date)] = (
+                            day.Config.Workers,
+                            day.Config.Minutes,
+                            day.Config.Efficiency,
+                            day.IsDayOff
+                        );
+                    }
+                }
+            }
+
+            // BƯỚC 2b: Dịch chuyển ngày, sau đó áp custom config theo ngày tuyệt đối mới
+            foreach (var row in Rows)
+            {
+                foreach (var day in row.Days)
+                {
+                    day.Date = day.Date.AddDays(dayOffset);
+                    day.IsWeekend = day.Date.DayOfWeek == DayOfWeek.Sunday;
+                    day.IsDeadline = day.Date.Date == DeadlineDate.Date;
+
+                    // Kiểm tra ngày mới có custom config đã lưu không
+                    if (customConfigSnapshot.TryGetValue((row.RowName, day.Date.Date), out var saved))
+                    {
+                        // Ngày mới này có custom config đã lưu → áp dụng lại đúng ngày
+                        day.Config.Workers = saved.workers;
+                        day.Config.Minutes = saved.minutes;
+                        day.Config.Efficiency = saved.efficiency;
+                        day.IsDayOff = saved.isDayOff;
+                        day.HasCustomConfig = true;
+                    }
+                    else
+                    {
+                        // Không có custom config → reset về default của row
+                        day.Config.Workers = row.DefaultConfig.Workers;
+                        day.Config.Minutes = row.DefaultConfig.Minutes;
+                        day.Config.Efficiency = row.DefaultConfig.Efficiency;
+                        day.HasCustomConfig = false;
+                        day.IsDayOff = day.IsWeekend;
+                    }
+                }
+            }
+
+            // BƯỚC 3: Xoá sạch blocks khỏi lưới
+            foreach (var row in Rows)
+                foreach (var day in row.Days)
+                    day.Blocks.Clear();
+
+            // BƯỚC 4: Tái phân bổ blocks liên tục bằng AssignBlockRecursively
+            foreach (var row in Rows)
+            {
+                if (!rowBlocksMap.TryGetValue(row.RowName, out var blocks)) continue;
+                foreach (var block in blocks)
+                {
+                    if (block.AllocatedMinutes > 0.01)
+                        AssignBlockRecursively(block, row.Days[0], row);
+                }
+            }
+
+            // BƯỚC 5: Cập nhật cờ deadline (viền đỏ) cho mọi block sau khi re-pack
+            foreach (var row in Rows)
+                foreach (var day in row.Days)
+                    CheckBlockExceeding(day);
+
+            SaveConfiguration();
         }
 
         [RelayCommand]
