@@ -64,7 +64,7 @@ namespace KHSX.ViewModels
                     var date = StartDate.AddDays(d);
                     
                     var dayCellA = new DayCell(date);
-                    dayCellA.IsDeadline = date.Date == DeadlineDate.Date;
+                    dayCellA.IsDeadline = false; // Deadline tổng đã bỏ, chỉ dùng deadline theo Gr.xxx
                     dayCellA.HasCustomConfig = false;
                     dayCellA.Config.Workers = rowA.DefaultConfig.Workers;
                     dayCellA.Config.Minutes = rowA.DefaultConfig.Minutes;
@@ -72,7 +72,7 @@ namespace KHSX.ViewModels
                     rowA.Days.Add(dayCellA);
                     
                     var dayCellB = new DayCell(date);
-                    dayCellB.IsDeadline = date.Date == DeadlineDate.Date;
+                    dayCellB.IsDeadline = false;
                     dayCellB.HasCustomConfig = false;
                     dayCellB.Config.Workers = rowB.DefaultConfig.Workers;
                     dayCellB.Config.Minutes = rowB.DefaultConfig.Minutes;
@@ -87,21 +87,8 @@ namespace KHSX.ViewModels
 
         partial void OnDeadlineDateChanged(DateTime value)
         {
-            if (_isLoading) return; // Bỏ qua nếu đang nạp dữ liệu từ json
-
-            // Update deadline flags on all day cells
-            foreach (var row in Rows)
-            {
-                foreach (var day in row.Days)
-                {
-                    day.IsDeadline = day.Date.Date == value.Date;
-                    CheckBlockExceeding(day); // Recheck block limits
-                }
-            }
-            SaveConfiguration();
-            
-            // Hiển thị cảnh báo vượt deadline nếu có
-            ShowDeadlineExceedWarning();
+            // Deadline tổng đã bị loại bỏ khỏi UI.
+            // Giữ method này để tránh crash nếu config cũ load giá trị vào.
         }
 
         partial void OnStartDateChanged(DateTime value)
@@ -180,7 +167,7 @@ namespace KHSX.ViewModels
                 {
                     day.Date = day.Date.AddDays(dayOffset);
                     day.IsWeekend = day.Date.DayOfWeek == DayOfWeek.Sunday;
-                    day.IsDeadline = day.Date.Date == DeadlineDate.Date;
+                    day.IsDeadline = false;
 
                     // Kiểm tra ngày mới có custom config đã lưu không
                     if (customConfigSnapshot.TryGetValue((row.RowName, day.Date.Date), out var saved))
@@ -307,7 +294,13 @@ namespace KHSX.ViewModels
                                 
                                 if (Math.Abs(minuteDiff) > 0.01) // Sản lượng thay đổi (Tăng hoặc Giảm)
                                 {
-                                    // Xác định vị trí xuất hiện đầu tiên của block trên lưới
+                                    // Lấy tất cả các line chứa block này (để repack sau)
+                                    var affectedRows = splitsOnGrid
+                                        .SelectMany(b => Rows.Where(row => row.Days.Any(day => day.Blocks.Contains(b))))
+                                        .Distinct()
+                                        .ToList();
+
+                                    // Xác định line đầu tiên block xuất hiện
                                     var firstSplitInfo = splitsOnGrid
                                         .SelectMany(b => Rows.SelectMany(row => row.Days.Where(day => day.Blocks.Contains(b)).Select(day => new { Block = b, Day = day, Row = row })))
                                         .OrderBy(x => x.Day.Date)
@@ -328,6 +321,12 @@ namespace KHSX.ViewModels
                                             }
                                         }
                                         
+                                        // Repack các line bị ảnh hưởng TRƯỚC (để các block khác dồn lên trước)
+                                        foreach (var affectedRow in affectedRows)
+                                        {
+                                            RepackRowBlocks(affectedRow);
+                                        }
+
                                         // Gom toàn bộ số lượng mới thành 1 block nguyên bản
                                         var reconstructedBlock = new ProductBlock
                                         {
@@ -342,7 +341,7 @@ namespace KHSX.ViewModels
                                         };
                                         reconstructedBlock.ParentId = reconstructedBlock.Id;
 
-                                        // Thả lại block đó VÀO LINE ĐẦU TIÊN (bắt đầu từ vị trí cũ)
+                                        // Thả lại block đó VÀO LINE ĐẦU TIÊN (lúc này sp2 đã dồn lên, sp1 sẽ nối tiếp sau sp2)
                                         AssignBlockRecursively(reconstructedBlock, firstSplitInfo.Day, firstSplitInfo.Row);
                                     }
                                 }
@@ -452,7 +451,8 @@ namespace KHSX.ViewModels
                     return dl.Deadline.Date;
                 }
             }
-            return DeadlineDate.Date;
+            // Fallback: không có Gr.xxx deadline -> không giới hạn (không bao giờ vượt)
+            return DateTime.MaxValue;
         }
 
         public event Action RequestDeadlineDialog;
@@ -710,7 +710,7 @@ namespace KHSX.ViewModels
                 var date = StartDate.AddDays(d);
                 
                 var dayCellA = new DayCell(date);
-                dayCellA.IsDeadline = date.Date == DeadlineDate.Date;
+                dayCellA.IsDeadline = false;
                 dayCellA.HasCustomConfig = false;
                 dayCellA.Config.Workers = rowA.DefaultConfig.Workers;
                 dayCellA.Config.Minutes = rowA.DefaultConfig.Minutes;
@@ -718,7 +718,7 @@ namespace KHSX.ViewModels
                 rowA.Days.Add(dayCellA);
                 
                 var dayCellB = new DayCell(date);
-                dayCellB.IsDeadline = date.Date == DeadlineDate.Date;
+                dayCellB.IsDeadline = false;
                 dayCellB.HasCustomConfig = false;
                 dayCellB.Config.Workers = rowB.DefaultConfig.Workers;
                 dayCellB.Config.Minutes = rowB.DefaultConfig.Minutes;
@@ -994,6 +994,8 @@ namespace KHSX.ViewModels
         {
             // Tính tổng AllocatedMinutes của tất cả split blocks cùng ParentId
             double totalMinutes = 0;
+            // Xác định line nguồn (line chứa block trước khi kéo đi) để repack sau
+            var sourceRows = new HashSet<ShiftRow>();
             foreach (var row in Rows)
             {
                 foreach (var day in row.Days)
@@ -1003,6 +1005,7 @@ namespace KHSX.ViewModels
                         if (b.ParentId == parentId || b.Id == parentId)
                         {
                             totalMinutes += b.AllocatedMinutes;
+                            sourceRows.Add(row);
                         }
                     }
                 }
@@ -1013,6 +1016,15 @@ namespace KHSX.ViewModels
 
             // Remove tất cả split blocks khỏi grid
             RemoveBlockFromGrid(parentId);
+
+            // Repack các line nguồn (để block còn lại dồn lên lấp chỗ trống)
+            foreach (var srcRow in sourceRows)
+            {
+                if (srcRow != targetRow) // Không repack line đích vì sắp assign vào đó
+                {
+                    RepackRowBlocks(srcRow);
+                }
+            }
             
             // Tạo block mới với tổng phút đầy đủ để gán lại
             var reconstructedBlock = new ProductBlock

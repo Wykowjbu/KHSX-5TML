@@ -62,8 +62,6 @@
                 <Button Content="➕ Thêm Line" Command="{Binding AddLineCommand}" Padding="10,5" Margin="0,0,20,0" Background="#4CAF50" Foreground="White"/>
                 <TextBlock Text="Ngày Bắt Đầu: " VerticalAlignment="Center" FontWeight="Bold"/>
                 <DatePicker SelectedDate="{Binding StartDate, Mode=TwoWay}" Width="150" Margin="5,0"/>
-                <TextBlock Text="Ngày Kết Thúc (Deadline Tổng): " VerticalAlignment="Center" FontWeight="Bold"/>
-                <DatePicker SelectedDate="{Binding DeadlineDate, Mode=TwoWay}" Width="150" Margin="5,0"/>
             </StackPanel>
         </Border>
 
