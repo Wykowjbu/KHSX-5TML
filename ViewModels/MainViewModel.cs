@@ -1014,32 +1014,105 @@ namespace KHSX.ViewModels
             // Làm tròn để tránh floating point issues
             totalMinutes = Math.Round(totalMinutes, 2);
 
-            // Remove tất cả split blocks khỏi grid
-            RemoveBlockFromGrid(parentId);
+            bool isSameLine = sourceRows.Count == 1 && sourceRows.Contains(targetRow);
 
-            // Repack các line nguồn (để block còn lại dồn lên lấp chỗ trống)
-            foreach (var srcRow in sourceRows)
+            if (isSameLine)
             {
-                if (srcRow != targetRow) // Không repack line đích vì sắp assign vào đó
+                // === KÉO TRONG CÙNG LINE = ĐỔI THỨ TỰ ===
+                // Thu thập tất cả block khác (không phải block đang kéo) theo thứ tự hiện có
+                var otherBlocks = new List<ProductBlock>();
+                var processedOtherIds = new HashSet<Guid>();
+
+                foreach (var day in targetRow.Days)
                 {
-                    RepackRowBlocks(srcRow);
+                    foreach (var b in day.Blocks.ToList())
+                    {
+                        var bParent = b.ParentId ?? b.Id;
+                        if (bParent == parentId || b.Id == parentId) continue; // Bỏ qua block đang kéo
+                        if (processedOtherIds.Contains(bParent)) continue;
+                        processedOtherIds.Add(bParent);
+
+                        // Tính tổng allocated cho block này
+                        double otherTotal = 0;
+                        foreach (var d in targetRow.Days)
+                        {
+                            foreach (var ob in d.Blocks)
+                            {
+                                if ((ob.ParentId ?? ob.Id) == bParent)
+                                    otherTotal += ob.AllocatedMinutes;
+                            }
+                        }
+
+                        var clone = new ProductBlock
+                        {
+                            Id = Guid.NewGuid(),
+                            ParentId = bParent,
+                            SourceId = b.SourceId,
+                            Code = b.Code,
+                            ProductionGroup = b.ProductionGroup,
+                            FunctionName = b.FunctionName,
+                            TotalMinutesRequired = b.TotalMinutesRequired,
+                            AllocatedMinutes = Math.Round(otherTotal, 2),
+                            DisplayColor = b.DisplayColor
+                        };
+                        otherBlocks.Add(clone);
+                    }
+                }
+
+                // Xoá toàn bộ block trên line
+                foreach (var day in targetRow.Days)
+                    day.Blocks.Clear();
+
+                // Assign block ĐƯỢC KÉO trước (lên đầu line)
+                var reconstructedBlock = new ProductBlock
+                {
+                    ParentId = parentId,
+                    SourceId = droppedBlock.SourceId,
+                    Code = droppedBlock.Code,
+                    ProductionGroup = droppedBlock.ProductionGroup,
+                    FunctionName = droppedBlock.FunctionName,
+                    TotalMinutesRequired = droppedBlock.TotalMinutesRequired,
+                    AllocatedMinutes = totalMinutes,
+                    DisplayColor = droppedBlock.DisplayColor
+                };
+                AssignBlockRecursively(reconstructedBlock, targetRow.Days[0], targetRow);
+
+                // Assign các block còn lại SAU (giữ thứ tự cũ giữa chúng)
+                foreach (var other in otherBlocks)
+                {
+                    AssignBlockRecursively(other, targetRow.Days[0], targetRow);
                 }
             }
-            
-            // Tạo block mới với tổng phút đầy đủ để gán lại
-            var reconstructedBlock = new ProductBlock
+            else
             {
-                ParentId = parentId,
-                SourceId = droppedBlock.SourceId,
-                Code = droppedBlock.Code,
-                ProductionGroup = droppedBlock.ProductionGroup,
-                FunctionName = droppedBlock.FunctionName,
-                TotalMinutesRequired = droppedBlock.TotalMinutesRequired,
-                AllocatedMinutes = totalMinutes,
-                DisplayColor = droppedBlock.DisplayColor
-            };
-            
-            AssignBlockRecursively(reconstructedBlock, targetDay, targetRow);
+                // === KÉO KHÁC LINE (logic cũ) ===
+                // Remove tất cả split blocks khỏi grid
+                RemoveBlockFromGrid(parentId);
+
+                // Repack các line nguồn (để block còn lại dồn lên lấp chỗ trống)
+                foreach (var srcRow in sourceRows)
+                {
+                    if (srcRow != targetRow) // Không repack line đích vì sắp assign vào đó
+                    {
+                        RepackRowBlocks(srcRow);
+                    }
+                }
+                
+                // Tạo block mới với tổng phút đầy đủ để gán lại
+                var reconstructedBlock = new ProductBlock
+                {
+                    ParentId = parentId,
+                    SourceId = droppedBlock.SourceId,
+                    Code = droppedBlock.Code,
+                    ProductionGroup = droppedBlock.ProductionGroup,
+                    FunctionName = droppedBlock.FunctionName,
+                    TotalMinutesRequired = droppedBlock.TotalMinutesRequired,
+                    AllocatedMinutes = totalMinutes,
+                    DisplayColor = droppedBlock.DisplayColor
+                };
+                
+                AssignBlockRecursively(reconstructedBlock, targetDay, targetRow);
+            }
         }
 
         /// <summary>
