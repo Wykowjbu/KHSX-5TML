@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
@@ -167,18 +167,24 @@ namespace KHSX
             var cancelBtn = new Button { Content = "Hủy", Width = 80, Height = 30 };
             cancelBtn.Click += (s, e) => dialog.DialogResult = false;
 
-            var setMaxGrBtn = new Button { Content = "Set tất cả thành Max Gr.xxx", Width = 180, Height = 30, Margin = new Thickness(0, 0, 10, 0), Background = new SolidColorBrush(Color.FromRgb(255, 152, 0)), Foreground = Brushes.White };
+            var globalGroupSelector = new ComboBox
+            {
+                Width = 100, Height = 30, Margin = new Thickness(0, 0, 10, 0),
+                ItemsSource = availableGr,
+                VerticalContentAlignment = VerticalAlignment.Center
+            };
+            
+            var initialMaxGr = availableGr.Where(g => !string.IsNullOrEmpty(g)).OrderByDescending(g => g).FirstOrDefault();
+            if (!string.IsNullOrEmpty(initialMaxGr)) globalGroupSelector.SelectedItem = initialMaxGr;
+
+            var setMaxGrBtn = new Button { Content = "Áp dụng cho tất cả", Width = 130, Height = 30, Margin = new Thickness(0, 0, 10, 0), Background = new SolidColorBrush(Color.FromRgb(255, 152, 0)), Foreground = Brushes.White };
             setMaxGrBtn.Click += (s, e) =>
             {
-                var maxGr = availableGr.Where(g => !string.IsNullOrEmpty(g)).OrderByDescending(g => g).FirstOrDefault();
-                if (string.IsNullOrEmpty(maxGr))
-                {
-                    MessageBox.Show("Không tìm thấy mã Gr.xxx nào trong dữ liệu Product hiện tại.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
-                }
+                var selectedGr = globalGroupSelector.SelectedItem as string;
+                if (string.IsNullOrEmpty(selectedGr)) return;
 
                 var confirmed = MessageBox.Show(
-                    $"Bạn có chắc chắn muốn thiết lập mặc định '{maxGr}' cho TẤT CẢ các dòng không?",
+                    $"Bạn có chắc chắn muốn thiết lập mặc định '{selectedGr}' cho TẤT CẢ các dòng không?",
                     "Xác nhận thay đổi hàng loạt",
                     MessageBoxButton.YesNo,
                     MessageBoxImage.Question);
@@ -187,11 +193,12 @@ namespace KHSX
                 {
                     foreach (var cb in groupBoxes.Values)
                     {
-                        cb.SelectedItem = maxGr;
+                        cb.SelectedItem = selectedGr;
                     }
                 }
             };
 
+            buttonPanel.Children.Add(globalGroupSelector);
             buttonPanel.Children.Add(setMaxGrBtn);
             buttonPanel.Children.Add(saveBtn);
             buttonPanel.Children.Add(cancelBtn);
@@ -681,6 +688,60 @@ namespace KHSX
             // Content
             var contentPanel = new StackPanel();
 
+            // === Quick Mass Actions ===
+            var massActionPanel = new StackPanel { Margin = new Thickness(0, 0, 0, 15), Background = new SolidColorBrush(Color.FromRgb(240, 240, 240)) };
+            massActionPanel.Children.Add(new TextBlock { Text = "CÀI ĐẶT NHANH CHO TẤT CẢ CÁC LINE (CÙNG NGÀY)", FontWeight = FontWeights.Bold, Padding = new Thickness(5), Background = Brushes.LightGray });
+            
+            var btnContainer = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(10) };
+            
+            var btnMassOff = new Button { Content = "🔴 NGHỈ TOÀN BỘ", Width = 135, Height = 35, Margin = new Thickness(0,0,10,0), Background = Brushes.Crimson, Foreground = Brushes.White, FontWeight = FontWeights.Bold };
+            var btnMassWork = new Button { Content = "🟢 LÀM TOÀN BỘ", Width = 135, Height = 35, Background = Brushes.ForestGreen, Foreground = Brushes.White, FontWeight = FontWeights.Bold };
+            
+            Action<bool> massApply = (isOff) => {
+                string strAction = isOff ? "ĐÓNG NGHỈ" : "MỞ LẠI LÀM VIỆC";
+                if (MessageBox.Show($"Bạn có chắc chắn muốn {strAction} cho TOÀN BỘ các line trong ngày {day.Date:dd/MM/yyyy} không?", "Xác nhận", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+                {
+                    if (vm != null)
+                    {
+                        foreach (var row in vm.Rows)
+                        {
+                            var targetDay = row.Days.FirstOrDefault(d => d.Date.Date == day.Date.Date);
+                            if (targetDay != null)
+                            {
+                                targetDay.IsDayOff = isOff;
+                                if (!isOff)
+                                {
+                                    bool isDifferent =
+                                        targetDay.Config.Workers != row.DefaultConfig.Workers ||
+                                        targetDay.Config.Minutes != row.DefaultConfig.Minutes ||
+                                        targetDay.Config.Efficiency != row.DefaultConfig.Efficiency;
+                                    targetDay.HasCustomConfig = isDifferent || (targetDay.IsWeekend != targetDay.IsDayOff);
+                                }
+                                else
+                                {
+                                    targetDay.HasCustomConfig = (targetDay.IsWeekend != targetDay.IsDayOff);
+                                }
+                            }
+                        }
+                        if (vm.GetType().GetMethod("RepackAll") != null)
+                        {
+                            vm.GetType().GetMethod("RepackAll").Invoke(vm, null);
+                        }
+                        vm.SaveConfigurationCommand.Execute(null);
+                        dialog.DialogResult = true;
+                    }
+                }
+            };
+            
+            btnMassOff.Click += (s, e) => massApply(true);
+            btnMassWork.Click += (s, e) => massApply(false);
+            
+            btnContainer.Children.Add(btnMassOff);
+            btnContainer.Children.Add(btnMassWork);
+            massActionPanel.Children.Add(btnContainer);
+            
+            contentPanel.Children.Add(massActionPanel);
+
             // === Toggle Ngày nghỉ / Ngày làm ===
             var dayOffPanel = new StackPanel { Margin = new Thickness(0, 0, 0, 15) };
 
@@ -698,7 +759,7 @@ namespace KHSX
 
             var toggleDayOffCheckBox = new System.Windows.Controls.CheckBox
             {
-                Content = "Đánh dấu là ngày nghỉ (không lên lịch sản xuất)",
+                Content = "Cài đặt trạng thái Ngày này thành NGÀY NGHỈ",
                 IsChecked = day.IsDayOff,
                 FontSize = 13,
                 Margin = new Thickness(0, 0, 0, 5)
@@ -747,7 +808,6 @@ namespace KHSX
             // Save logic
             saveButton.Click += (s, e) =>
             {
-                bool wasDayOff = day.IsDayOff;
                 bool newIsDayOff = toggleDayOffCheckBox.IsChecked == true;
                 day.IsDayOff = newIsDayOff;
 
@@ -764,6 +824,10 @@ namespace KHSX
                 {
                     // Ngày nghỉ
                     day.HasCustomConfig = (day.IsWeekend != day.IsDayOff);
+                }
+                if (vm?.GetType().GetMethod("RepackRowBlocks") != null)
+                {
+                    vm.GetType().GetMethod("RepackRowBlocks").Invoke(vm, new object[] { parentRow });
                 }
 
                 vm?.SaveConfigurationCommand.Execute(null);

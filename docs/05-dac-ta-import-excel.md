@@ -14,8 +14,8 @@ Các cột:
 - **Cột E–J, hàng 1:** header là tên các Gr.xxx (vd: Gr.284, Gr.285, …; nhà máy làm theo thứ tự và Gr tăng dần 289, 290, …)
 - **Cột E–J, từ hàng 2:** **số lượng sản phẩm** theo từng Gr (không phải số phút). Tổng phút = số lượng × minutesPerProduct.
 - **Cột K:** tên nhóm sản phẩm (ProductGroup)
-- **Cột L:** minutesPerProduct (số phút/sản phẩm)
-- **Cột M:** tên function
+- **Cột L:** tên function
+- **Cột M:** minutesPerProduct (số phút/sản phẩm)
 
 Ví dụ:
 

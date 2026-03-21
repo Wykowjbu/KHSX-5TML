@@ -31,6 +31,8 @@ namespace KHSX.ViewModels
         [ObservableProperty]
         private DateTime startDate = DateTime.Today;
 
+        public ObservableCollection<DaySummary> DaySummaries { get; } = new ObservableCollection<DaySummary>();
+
         public MainViewModel()
         {
             _excelService = new ExcelImportService();
@@ -303,51 +305,46 @@ namespace KHSX.ViewModels
                                 // Block đã nằm trên grid
                                 double minuteDiff = newBlock.TotalMinutesRequired - allocatedOnGrid;
                                 
-                                if (minuteDiff < -0.01) // Giảm số phút
+                                if (Math.Abs(minuteDiff) > 0.01) // Sản lượng thay đổi (Tăng hoặc Giảm)
                                 {
-                                    // Bắt đầu co từ split cuối cùng trên line trở về trước
-                                    var sortedSplits = splitsOnGrid
+                                    // Xác định vị trí xuất hiện đầu tiên của block trên lưới
+                                    var firstSplitInfo = splitsOnGrid
                                         .SelectMany(b => Rows.SelectMany(row => row.Days.Where(day => day.Blocks.Contains(b)).Select(day => new { Block = b, Day = day, Row = row })))
-                                        .OrderByDescending(x => x.Day.Date)
-                                        .ToList();
+                                        .OrderBy(x => x.Day.Date)
+                                        .FirstOrDefault();
                                         
-                                    double amountToRemove = Math.Abs(minuteDiff);
-                                    foreach (var splitInfo in sortedSplits)
+                                    if (firstSplitInfo != null)
                                     {
-                                        if (amountToRemove <= 0.01) break;
+                                        // Xoá SẠCH TẤT CẢ các mảnh của block này trên mọi DayCell
+                                        foreach (var r in Rows)
+                                        {
+                                            foreach (var d in r.Days)
+                                            {
+                                                var splitsToRemove = d.Blocks.Where(b => b.Code == newBlock.Code).ToList();
+                                                foreach (var split in splitsToRemove)
+                                                {
+                                                    d.Blocks.Remove(split);
+                                                }
+                                            }
+                                        }
                                         
-                                        var b = splitInfo.Block;
-                                        if (b.AllocatedMinutes <= amountToRemove)
+                                        // Gom toàn bộ số lượng mới thành 1 block nguyên bản
+                                        var reconstructedBlock = new ProductBlock
                                         {
-                                            // Xoá hẳn split này
-                                            amountToRemove -= b.AllocatedMinutes;
-                                            splitInfo.Day.Blocks.Remove(b);
-                                        }
-                                        else
-                                        {
-                                            // Co lại 1 phần
-                                            b.AllocatedMinutes -= amountToRemove;
-                                            amountToRemove = 0;
-                                        }
+                                            Id = Guid.NewGuid(),
+                                            SourceId = newBlock.SourceId,
+                                            Code = newBlock.Code,
+                                            ProductionGroup = newBlock.ProductionGroup,
+                                            FunctionName = newBlock.FunctionName,
+                                            TotalMinutesRequired = newBlock.TotalMinutesRequired,
+                                            AllocatedMinutes = newBlock.TotalMinutesRequired,
+                                            DisplayColor = splitsOnGrid.First().DisplayColor
+                                        };
+                                        reconstructedBlock.ParentId = reconstructedBlock.Id;
+
+                                        // Thả lại block đó VÀO LINE ĐẦU TIÊN (bắt đầu từ vị trí cũ)
+                                        AssignBlockRecursively(reconstructedBlock, firstSplitInfo.Day, firstSplitInfo.Row);
                                     }
-                                    
-                                    // Cập nhật TotalMinutesRequired cho mọi split còn lại
-                                    foreach(var sp in splitsOnGrid.Where(b => sortedSplits.Any(splitInfo => splitInfo.Day.Blocks.Contains(b))))
-                                    {
-                                        sp.TotalMinutesRequired = newBlock.TotalMinutesRequired;
-                                    }
-                                }
-                                else if (minuteDiff > 0.01) // Tăng số phút
-                                {
-                                    // Cập nhật total cho các splits cũ
-                                    foreach (var b in splitsOnGrid)
-                                    {
-                                        b.TotalMinutesRequired = newBlock.TotalMinutesRequired;
-                                    }
-                                    
-                                    // Đẩy phần dư mới vào Unassigned
-                                    var remainderBlock = newBlock.CloneWithSplit(minuteDiff);
-                                    UnassignedBlocks.Add(remainderBlock);
                                 }
                             }
                             else
@@ -461,11 +458,130 @@ namespace KHSX.ViewModels
         public event Action RequestDeadlineDialog;
         public event Action RequestConfigGroupsDialog;
 
+        public void UpdateDaySummaries()
+        {
+            if (Rows == null || !Rows.Any()) return;
+            
+            if (DaySummaries.Count == 0)
+            {
+                for (int i = 0; i < 30; i++)
+                {
+                    DaySummaries.Add(new DaySummary(StartDate.AddDays(i)));
+                }
+            }
+
+            for (int i = 0; i < 30; i++)
+            {
+                var date = StartDate.AddDays(i);
+                if (i < DaySummaries.Count)
+                {
+                    DaySummaries[i].Date = date;
+                    
+                    double workers = 0;
+                    bool allOff = true;
+                    
+                    foreach (var row in Rows)
+                    {
+                        var cell = row.Days.FirstOrDefault(d => d.Date.Date == date.Date);
+                        if (cell != null && !cell.IsDayOff)
+                        {
+                            workers += cell.Config.Workers;
+                            allOff = false;
+                        }
+                    }
+                    
+                    DaySummaries[i].TotalWorkers = workers;
+                    DaySummaries[i].IsDayOff = allOff;
+                }
+            }
+        }
+
+        public void RepackRowBlocks(ShiftRow row)
+        {
+            if (row == null || row.Days.Count == 0) return;
+
+            var orderedBlocks = new List<ProductBlock>();
+            var processedIds = new HashSet<Guid>();
+            
+            foreach (var day in row.Days)
+            {
+                foreach (var split in day.Blocks.ToList())
+                {
+                    var pid = split.ParentId ?? split.Id;
+                    if (!processedIds.Contains(pid))
+                    {
+                        processedIds.Add(pid);
+                        var totalOnThisRow = Math.Round(row.Days.SelectMany(d => d.Blocks)
+                                                     .Where(b => (b.ParentId ?? b.Id) == pid)
+                                                     .Sum(b => b.AllocatedMinutes), 2);
+                        
+                        var reconstructed = new ProductBlock
+                        {
+                            Id = Guid.NewGuid(),
+                            ParentId = pid,
+                            SourceId = split.SourceId,
+                            Code = split.Code,
+                            ProductionGroup = split.ProductionGroup,
+                            FunctionName = split.FunctionName,
+                            TotalMinutesRequired = totalOnThisRow,
+                            AllocatedMinutes = totalOnThisRow,
+                            DisplayColor = split.DisplayColor
+                        };
+                        orderedBlocks.Add(reconstructed);
+                    }
+                    day.Blocks.Remove(split);
+                }
+            }
+
+            var firstDay = row.Days.First();
+            foreach (var block in orderedBlocks)
+            {
+                AssignBlockRecursively(block, firstDay, row);
+            }
+        }
+
+        public void RepackAll()
+        {
+            foreach (var row in Rows)
+            {
+                RepackRowBlocks(row);
+            }
+        }
+
+        public void UpdateLineDeadlines()
+        {
+            if (Rows == null || !Rows.Any()) return;
+            
+            foreach (var row in Rows)
+            {
+                DateTime? maxDeadline = null;
+                foreach (var day in row.Days)
+                {
+                    foreach (var block in day.Blocks)
+                    {
+                        var dl = GetDeadlineForBlock(block);
+                        if (maxDeadline == null || dl > maxDeadline.Value)
+                        {
+                            maxDeadline = dl;
+                        }
+                    }
+                }
+
+                foreach (var day in row.Days)
+                {
+                    day.IsWithinLineDeadline = maxDeadline.HasValue && day.Date.Date <= maxDeadline.Value.Date;
+                }
+            }
+        }
+
         [RelayCommand]
         private void SaveConfiguration()
         {
             try
             {
+                UpdateDaySummaries();
+                UpdateLineDeadlines();
+
                 // 1. Lưu cấu hình Line, Ngày làm việc
                 _configService.SaveConfiguration(StartDate, DeadlineDate, Rows);
 
