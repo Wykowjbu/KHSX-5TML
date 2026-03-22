@@ -136,9 +136,9 @@ namespace KHSX.Services
                                 {
                                     groupsMap[groupStr] = new ProductGroupData { GroupId = groupStr, Name = !string.IsNullOrEmpty(funcStr) ? funcStr : groupStr, ProductionGroup = kvp.Value };
                                 }
-                                else if (!string.IsNullOrEmpty(funcStr) && groupsMap[groupStr].Name == groupStr)
+                                else if (!string.IsNullOrEmpty(funcStr))
                                 {
-                                    // Gán đè nếu tên cũ vẫn đang là Name của GroupID
+                                    // Luôn cập nhật tên mới nhất từ file Excel
                                     groupsMap[groupStr].Name = funcStr;
                                 }
                             }

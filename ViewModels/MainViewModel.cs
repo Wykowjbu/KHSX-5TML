@@ -229,6 +229,8 @@ namespace KHSX.ViewModels
                 try
                 {
                     _excelService.ImportMarketing(dialog.FileName);
+                    RefreshBlocksMetadata();
+                    SaveConfiguration();
                     MessageBox.Show("Nhập dữ liệu Marketing thành công!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
                 catch (Exception ex)
