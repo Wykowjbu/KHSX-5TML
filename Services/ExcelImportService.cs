@@ -75,8 +75,8 @@ namespace KHSX.Services
                 // Fallbacks dựa trên vị trí cột mặc định
                 if (codeColIdx == -1) codeColIdx = 0; // A
                 if (groupColIdx == -1) groupColIdx = 10; // K
-                if (minColIdx == -1) minColIdx = 11; // L
-                if (funcColIdx == -1) funcColIdx = 12; // M
+                if (funcColIdx == -1) funcColIdx = 11; // L (Tên Function)
+                if (minColIdx == -1) minColIdx = 12; // M (Số phút)
 
                 // Tải dữ liệu cũ để Merge
                 var oldProducts = JsonStorage.Load<List<ProductData>>("products.json") ?? new List<ProductData>();
@@ -106,34 +106,6 @@ namespace KHSX.Services
                         productDict[codeStr] = currentProduct;
                     }
 
-                    // Đọc và cập nhật số lượng theo từng Gr.xxx
-                    foreach (var kvp in grColIndices)
-                    {
-                        if (row.ItemArray.Length > kvp.Key)
-                        {
-                            var cellVal = row[kvp.Key]?.ToString()?.Trim() ?? "";
-                            if (double.TryParse(cellVal, out double qty) && qty > 0)
-                            {
-                                currentProduct.QuantitiesByGroup[kvp.Value] = qty;
-                                
-                                // Nếu chưa có, add vào groups map để user có thể cấu hình tên
-                                if (!groupsMap.ContainsKey(groupStr))
-                                {
-                                    groupsMap[groupStr] = new ProductGroupData { GroupId = groupStr, Name = groupStr, ProductionGroup = kvp.Value };
-                                }
-                            }
-                        }
-                    }
-
-                    // Cập nhật Total
-                    currentProduct.TotalQuantity = currentProduct.QuantitiesByGroup.Values.Sum();
-
-                    // Cập nhật lại Gr.xxx lớn nhất cho sản phẩm
-                    if (currentProduct.QuantitiesByGroup.Any())
-                    {
-                        currentProduct.ProductionGroup = currentProduct.QuantitiesByGroup.Keys.OrderByDescending(k => k).First();
-                    }
-
                     double minVal = 18; 
                     if (minColIdx != -1 && row.ItemArray.Length > minColIdx)
                     {
@@ -147,6 +119,39 @@ namespace KHSX.Services
                     {
                         funcStr = row[funcColIdx]?.ToString()?.Trim() ?? "";
                         currentProduct.Function = funcStr;
+                    }
+
+                    // Đọc và cập nhật số lượng theo từng Gr.xxx
+                    foreach (var kvp in grColIndices)
+                    {
+                        if (row.ItemArray.Length > kvp.Key)
+                        {
+                            var cellVal = row[kvp.Key]?.ToString()?.Trim() ?? "";
+                            if (double.TryParse(cellVal, out double qty) && qty > 0)
+                            {
+                                currentProduct.QuantitiesByGroup[kvp.Value] = qty;
+                                
+                                // Cập nhật tên function vào ProductGroup
+                                if (!groupsMap.ContainsKey(groupStr))
+                                {
+                                    groupsMap[groupStr] = new ProductGroupData { GroupId = groupStr, Name = !string.IsNullOrEmpty(funcStr) ? funcStr : groupStr, ProductionGroup = kvp.Value };
+                                }
+                                else if (!string.IsNullOrEmpty(funcStr) && groupsMap[groupStr].Name == groupStr)
+                                {
+                                    // Gán đè nếu tên cũ vẫn đang là Name của GroupID
+                                    groupsMap[groupStr].Name = funcStr;
+                                }
+                            }
+                        }
+                    }
+
+                    // Cập nhật Total
+                    currentProduct.TotalQuantity = currentProduct.QuantitiesByGroup.Values.Sum();
+
+                    // Cập nhật lại Gr.xxx lớn nhất cho sản phẩm
+                    if (currentProduct.QuantitiesByGroup.Any())
+                    {
+                        currentProduct.ProductionGroup = currentProduct.QuantitiesByGroup.Keys.OrderByDescending(k => k).First();
                     }
                 }
 

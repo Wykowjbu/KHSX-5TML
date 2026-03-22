@@ -14,7 +14,10 @@ namespace KHSX.Models
         private bool isWeekend;
 
         [ObservableProperty]
-        private bool isDayOff; // True = ngày nghỉ (không lên lịch được)
+        private bool isDayOff;
+
+        [ObservableProperty]
+        private bool isWithinLineDeadline; // True = ngày nghỉ (không lên lịch được)
 
         [ObservableProperty]
         private bool isDeadline;
@@ -40,6 +43,7 @@ namespace KHSX.Models
                 OnPropertyChanged(nameof(TotalUsed));
                 OnPropertyChanged(nameof(AvailableMinutes));
                 OnPropertyChanged(nameof(WatermarkText));
+                OnPropertyChanged(nameof(HasAvailableCapacity));
             };
 
             // Listen to shift config changes
@@ -48,12 +52,15 @@ namespace KHSX.Models
                 OnPropertyChanged(nameof(TotalCapacity));
                 OnPropertyChanged(nameof(AvailableMinutes));
                 OnPropertyChanged(nameof(WatermarkText));
+                OnPropertyChanged(nameof(HasAvailableCapacity));
             };
         }
 
         public double TotalUsed => Blocks.Sum(b => b.AllocatedMinutes);
 
         public double AvailableMinutes => Math.Max(0, TotalCapacity - TotalUsed);
+
+        public bool HasAvailableCapacity => !IsDayOff && AvailableMinutes >= 1.0 && IsWithinLineDeadline;
 
         public string WatermarkText => IsDayOff ? "Nghỉ" : 
             $"{Config.Workers:0.##}per({Config.Minutes:0.##})x{Config.Efficiency:0.##}{(HasCustomConfig ? "*" : "")}\n" +
@@ -64,6 +71,12 @@ namespace KHSX.Models
             OnPropertyChanged(nameof(WatermarkText));
             OnPropertyChanged(nameof(TotalCapacity));
             OnPropertyChanged(nameof(AvailableMinutes));
+            OnPropertyChanged(nameof(HasAvailableCapacity));
+        }
+
+        partial void OnIsWithinLineDeadlineChanged(bool value)
+        {
+            OnPropertyChanged(nameof(HasAvailableCapacity));
         }
     }
 }

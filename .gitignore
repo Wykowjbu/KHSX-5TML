@@ -361,3 +361,31 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# ==========================================
+# Project-specific rules
+# ==========================================
+
+# Visual Studio per-user project settings (không commit vào repo)
+*.csproj.user
+
+# Loại trừ Local DB hoặc Data Test cá nhân (tránh lộ thông tin nhà máy)
+Data/*.xlsx
+Data/*.xls
+Data/*.csv
+Data/*.json
+*.db
+*.sqlite
+
+# MacOS Directory Meta (nếu team có người xài Mac)
+.DS_Store
+
+# ==========================================
+# Superpowers Skills (external dependency)
+# ==========================================
+# Skills được cài từ https://github.com/obra/superpowers
+# Không cần commit vì có thể cài lại bằng git clone
+.agents/skills/
+
+# Nhưng VẪN commit các file workflow và config tự viết của team
+# ví dụ: .agents/workflows/*.md sẽ được commit bình thường

@@ -49,6 +49,10 @@ Capacity = 5 × 480 × 1.15
 
 # Cập Nhật Khi Import MES Mới
 
-- **Số phút giảm** (ví dụ 1000 → 700): hệ thống tự **co lại** block, giữ nguyên vị trí trên line. Các split block trên schedule co lại tương ứng.
-- **Số phút tăng** (ví dụ 1000 → 1300 do thêm Gr mới): hệ thống **cập nhật số phút mới** cho block. Phần dư (300 phút) được thêm vào totalMinutes; block giữ vị trí cũ, phần dư tự lấp thêm vào schedule.
+- **Số phút giảm** (ví dụ 1000 → 700): hệ thống sẽ **xoá sạch** toàn bộ các phân mảnh (split) hiện tại của block đó trên mọi line. Sau đó gom tổng 700 phút thành 1 block nguyên bản và ném thả toàn bộ vào ngày đầu tiên ở **Line đầu tiên** mà block từng xuất hiện. Nếu tổng khối lượng mới tràn qua deadline, hệ thống sẽ báo viền đỏ cảnh báo.
+- **Số phút tăng** (ví dụ 1000 → 1300 do thêm Gr mới): hệ thống **cập nhật số phút mới** cho các splits cũ.
 - **Nguyên tắc:** tất cả sản phẩm đã lưu (theo productId) chỉ cập nhật số liệu mới, không quan tâm số cũ.
+
+# Cập Nhật Khi Thay Đổi Cấu Hình (Auto-Repack)
+- Cơ chế **Repack Blocks** được kích hoạt tự động mỗi khi có thay đổi sức chứa của bất kì Line nào.
+- Nếu bạn đổi số công nhân, đổi số phút, mức hiệu suất, hoặc set "Ngày nghỉ hàng loạt": Hệ thống tự động quét Line, tháo toàn bộ block ra khỏi Line và thả nối đuôi nhau lại từ đầu. Giúp lịch linh hoạt co/trượt block ra những ngày làm việc thực tế cực chuẩn.

@@ -31,6 +31,8 @@ namespace KHSX.ViewModels
         [ObservableProperty]
         private DateTime startDate = DateTime.Today;
 
+        public ObservableCollection<DaySummary> DaySummaries { get; } = new ObservableCollection<DaySummary>();
+
         public MainViewModel()
         {
             _excelService = new ExcelImportService();
@@ -62,7 +64,7 @@ namespace KHSX.ViewModels
                     var date = StartDate.AddDays(d);
                     
                     var dayCellA = new DayCell(date);
-                    dayCellA.IsDeadline = date.Date == DeadlineDate.Date;
+                    dayCellA.IsDeadline = false; // Deadline tổng đã bỏ, chỉ dùng deadline theo Gr.xxx
                     dayCellA.HasCustomConfig = false;
                     dayCellA.Config.Workers = rowA.DefaultConfig.Workers;
                     dayCellA.Config.Minutes = rowA.DefaultConfig.Minutes;
@@ -70,7 +72,7 @@ namespace KHSX.ViewModels
                     rowA.Days.Add(dayCellA);
                     
                     var dayCellB = new DayCell(date);
-                    dayCellB.IsDeadline = date.Date == DeadlineDate.Date;
+                    dayCellB.IsDeadline = false;
                     dayCellB.HasCustomConfig = false;
                     dayCellB.Config.Workers = rowB.DefaultConfig.Workers;
                     dayCellB.Config.Minutes = rowB.DefaultConfig.Minutes;
@@ -85,21 +87,8 @@ namespace KHSX.ViewModels
 
         partial void OnDeadlineDateChanged(DateTime value)
         {
-            if (_isLoading) return; // Bỏ qua nếu đang nạp dữ liệu từ json
-
-            // Update deadline flags on all day cells
-            foreach (var row in Rows)
-            {
-                foreach (var day in row.Days)
-                {
-                    day.IsDeadline = day.Date.Date == value.Date;
-                    CheckBlockExceeding(day); // Recheck block limits
-                }
-            }
-            SaveConfiguration();
-            
-            // Hiển thị cảnh báo vượt deadline nếu có
-            ShowDeadlineExceedWarning();
+            // Deadline tổng đã bị loại bỏ khỏi UI.
+            // Giữ method này để tránh crash nếu config cũ load giá trị vào.
         }
 
         partial void OnStartDateChanged(DateTime value)
@@ -178,7 +167,7 @@ namespace KHSX.ViewModels
                 {
                     day.Date = day.Date.AddDays(dayOffset);
                     day.IsWeekend = day.Date.DayOfWeek == DayOfWeek.Sunday;
-                    day.IsDeadline = day.Date.Date == DeadlineDate.Date;
+                    day.IsDeadline = false;
 
                     // Kiểm tra ngày mới có custom config đã lưu không
                     if (customConfigSnapshot.TryGetValue((row.RowName, day.Date.Date), out var saved))
@@ -266,7 +255,44 @@ namespace KHSX.ViewModels
                     
                     // Lấy ra các block mới từ dữ liệu MES vừa import
                     var newBlocks = _excelService.GenerateBlocksFromData();
-                    
+
+                    // --- BẮT ĐẦU FIX: DỌN DẸP CÁC SẢN PHẨM ĐÃ LÀM XONG (SỐ PHÚT = 0) ---
+                    var activeCodes = new HashSet<string>(newBlocks.Select(b => b.Code));
+
+                    // 1. Quét phần Chưa gán (Unassigned)
+                    var obsoleteUnassigned = UnassignedBlocks.Where(b => !activeCodes.Contains(b.Code)).ToList();
+                    foreach (var obsolete in obsoleteUnassigned)
+                    {
+                        UnassignedBlocks.Remove(obsolete);
+                    }
+
+                    // 2. Quét trên Lịch (Grid/Rows)
+                    var rowsToRepackForRemoval = new HashSet<ShiftRow>();
+                    foreach (var row in Rows)
+                    {
+                        bool rowModified = false;
+                        foreach (var day in row.Days)
+                        {
+                            var obsoleteSplits = day.Blocks.Where(b => !activeCodes.Contains(b.Code)).ToList();
+                            foreach (var split in obsoleteSplits)
+                            {
+                                day.Blocks.Remove(split);
+                                rowModified = true;
+                            }
+                        }
+                        if (rowModified) 
+                        {
+                            rowsToRepackForRemoval.Add(row);
+                        }
+                    }
+
+                    // 3. Đóng gói lại (dồn về bên trái) những hàng vừa bị xoá mất mảnh ghép
+                    foreach (var row in rowsToRepackForRemoval)
+                    {
+                        RepackRowBlocks(row);
+                    }
+                    // --- KẾT THÚC FIX DỌN DẸP ---
+
                     // 1. Cập nhật các Block MỚI và CŨ chưa gán
                     foreach (var newBlock in newBlocks)
                     {
@@ -303,51 +329,63 @@ namespace KHSX.ViewModels
                                 // Block đã nằm trên grid
                                 double minuteDiff = newBlock.TotalMinutesRequired - allocatedOnGrid;
                                 
-                                if (minuteDiff < -0.01) // Giảm số phút
+                                if (Math.Abs(minuteDiff) > 0.01) // Sản lượng thay đổi (Tăng hoặc Giảm)
                                 {
-                                    // Bắt đầu co từ split cuối cùng trên line trở về trước
-                                    var sortedSplits = splitsOnGrid
-                                        .SelectMany(b => Rows.SelectMany(row => row.Days.Where(day => day.Blocks.Contains(b)).Select(day => new { Block = b, Day = day, Row = row })))
-                                        .OrderByDescending(x => x.Day.Date)
+                                    // Lấy tất cả các line chứa block này (để repack sau)
+                                    var affectedRows = splitsOnGrid
+                                        .SelectMany(b => Rows.Where(row => row.Days.Any(day => day.Blocks.Contains(b))))
+                                        .Distinct()
                                         .ToList();
-                                        
-                                    double amountToRemove = Math.Abs(minuteDiff);
-                                    foreach (var splitInfo in sortedSplits)
+
+                                    var splitInfos = splitsOnGrid
+                                        .SelectMany(b => Rows.SelectMany(row => row.Days.Where(day => day.Blocks.Contains(b)).Select(day => new { Block = b, Day = day, Row = row })))
+                                        .OrderBy(x => x.Day.Date)
+                                        .ToList();
+
+                                    if (splitInfos.Any())
                                     {
-                                        if (amountToRemove <= 0.01) break;
-                                        
-                                        var b = splitInfo.Block;
-                                        if (b.AllocatedMinutes <= amountToRemove)
+                                        // Cập nhật TotalMinutesRequired cho tất cả các mảnh hiện có
+                                        foreach (var info in splitInfos)
                                         {
-                                            // Xoá hẳn split này
-                                            amountToRemove -= b.AllocatedMinutes;
-                                            splitInfo.Day.Blocks.Remove(b);
+                                            info.Block.TotalMinutesRequired = newBlock.TotalMinutesRequired;
+                                        }
+
+                                        if (minuteDiff > 0)
+                                        {
+                                            // Tăng sản lượng (Hướng 2): Cộng dồn toàn bộ vào mảnh cuối cùng (trễ nhất)
+                                            var lastSplit = splitInfos.Last();
+                                            lastSplit.Block.AllocatedMinutes += minuteDiff;
                                         }
                                         else
                                         {
-                                            // Co lại 1 phần
-                                            b.AllocatedMinutes -= amountToRemove;
-                                            amountToRemove = 0;
+                                            // Giảm sản lượng: Trừ lùi từ mảnh cuối cùng trở về trước
+                                            double remainingToSubtract = Math.Abs(minuteDiff);
+                                            for (int i = splitInfos.Count - 1; i >= 0; i--)
+                                            {
+                                                if (remainingToSubtract <= 0.01) break;
+                                                
+                                                var info = splitInfos[i];
+                                                if (info.Block.AllocatedMinutes > remainingToSubtract)
+                                                {
+                                                    info.Block.AllocatedMinutes -= remainingToSubtract;
+                                                    remainingToSubtract = 0;
+                                                }
+                                                else
+                                                {
+                                                    remainingToSubtract -= info.Block.AllocatedMinutes;
+                                                    info.Day.Blocks.Remove(info.Block); // Xoá hẳn mảnh này khỏi lưới
+                                                    info.Block.AllocatedMinutes = 0;
+                                                }
+                                            }
+                                        }
+
+                                        // Gọi dồn dòng cho các line bị ảnh hưởng.
+                                        // RepackRowBlocks sẽ đọc các Block CÒN LẠI mượt mà từ trái qua phải, nhờ đó giữ nguyên trật tự của Sp1 với Sp2.
+                                        foreach (var affectedRow in affectedRows)
+                                        {
+                                            RepackRowBlocks(affectedRow);
                                         }
                                     }
-                                    
-                                    // Cập nhật TotalMinutesRequired cho mọi split còn lại
-                                    foreach(var sp in splitsOnGrid.Where(b => sortedSplits.Any(splitInfo => splitInfo.Day.Blocks.Contains(b))))
-                                    {
-                                        sp.TotalMinutesRequired = newBlock.TotalMinutesRequired;
-                                    }
-                                }
-                                else if (minuteDiff > 0.01) // Tăng số phút
-                                {
-                                    // Cập nhật total cho các splits cũ
-                                    foreach (var b in splitsOnGrid)
-                                    {
-                                        b.TotalMinutesRequired = newBlock.TotalMinutesRequired;
-                                    }
-                                    
-                                    // Đẩy phần dư mới vào Unassigned
-                                    var remainderBlock = newBlock.CloneWithSplit(minuteDiff);
-                                    UnassignedBlocks.Add(remainderBlock);
                                 }
                             }
                             else
@@ -455,17 +493,142 @@ namespace KHSX.ViewModels
                     return dl.Deadline.Date;
                 }
             }
-            return DeadlineDate.Date;
+            // Fallback: không có Gr.xxx deadline -> không giới hạn (không bao giờ vượt)
+            return DateTime.MaxValue;
         }
 
-        public event Action RequestDeadlineDialog;
-        public event Action RequestConfigGroupsDialog;
+        public event Action? RequestDeadlineDialog;
+        public event Action? RequestConfigGroupsDialog;
+
+        public void UpdateDaySummaries()
+        {
+            if (Rows == null || !Rows.Any()) return;
+            
+            if (DaySummaries.Count == 0)
+            {
+                for (int i = 0; i < 30; i++)
+                {
+                    DaySummaries.Add(new DaySummary(StartDate.AddDays(i)));
+                }
+            }
+
+            for (int i = 0; i < 30; i++)
+            {
+                var date = StartDate.AddDays(i);
+                if (i < DaySummaries.Count)
+                {
+                    DaySummaries[i].Date = date;
+                    
+                    double workers = 0;
+                    bool allOff = true;
+                    
+                    foreach (var row in Rows)
+                    {
+                        var cell = row.Days.FirstOrDefault(d => d.Date.Date == date.Date);
+                        if (cell != null && !cell.IsDayOff)
+                        {
+                            workers += cell.Config.Workers;
+                            allOff = false;
+                        }
+                    }
+                    
+                    DaySummaries[i].TotalWorkers = workers;
+                    DaySummaries[i].IsDayOff = allOff;
+                }
+            }
+        }
+
+        public void RepackRowBlocks(ShiftRow row)
+        {
+            if (row == null || row.Days.Count == 0) return;
+
+            var orderedBlocks = new List<ProductBlock>();
+            var processedIds = new HashSet<Guid>();
+            
+            foreach (var day in row.Days)
+            {
+                foreach (var split in day.Blocks.ToList())
+                {
+                    var pid = split.ParentId ?? split.Id;
+                    if (!processedIds.Contains(pid))
+                    {
+                        processedIds.Add(pid);
+                        var totalOnThisRow = Math.Round(row.Days.SelectMany(d => d.Blocks)
+                                                     .Where(b => (b.ParentId ?? b.Id) == pid)
+                                                     .Sum(b => b.AllocatedMinutes), 2);
+                        
+                        var reconstructed = new ProductBlock
+                        {
+                            Id = Guid.NewGuid(),
+                            ParentId = pid,
+                            SourceId = split.SourceId,
+                            Code = split.Code,
+                            ProductionGroup = split.ProductionGroup,
+                            FunctionName = split.FunctionName,
+                            TotalMinutesRequired = split.TotalMinutesRequired,
+                            AllocatedMinutes = totalOnThisRow,
+                            DisplayColor = split.DisplayColor
+                        };
+                        
+                        // Bỏ qua các khối có số phút <= 0 sau khi trừ
+                        if (totalOnThisRow > 0.01)
+                        {
+                            orderedBlocks.Add(reconstructed);
+                        }
+                    }
+                    day.Blocks.Remove(split);
+                }
+            }
+
+            var firstDay = row.Days.First();
+            foreach (var block in orderedBlocks)
+            {
+                AssignBlockRecursively(block, firstDay, row);
+            }
+        }
+
+        public void RepackAll()
+        {
+            foreach (var row in Rows)
+            {
+                RepackRowBlocks(row);
+            }
+        }
+
+        public void UpdateLineDeadlines()
+        {
+            if (Rows == null || !Rows.Any()) return;
+            
+            foreach (var row in Rows)
+            {
+                DateTime? maxDeadline = null;
+                foreach (var day in row.Days)
+                {
+                    foreach (var block in day.Blocks)
+                    {
+                        var dl = GetDeadlineForBlock(block);
+                        if (maxDeadline == null || dl > maxDeadline.Value)
+                        {
+                            maxDeadline = dl;
+                        }
+                    }
+                }
+
+                foreach (var day in row.Days)
+                {
+                    day.IsWithinLineDeadline = maxDeadline.HasValue && day.Date.Date <= maxDeadline.Value.Date;
+                }
+            }
+        }
 
         [RelayCommand]
         private void SaveConfiguration()
         {
             try
             {
+                UpdateDaySummaries();
+                UpdateLineDeadlines();
+
                 // 1. Lưu cấu hình Line, Ngày làm việc
                 _configService.SaveConfiguration(StartDate, DeadlineDate, Rows);
 
@@ -569,6 +732,14 @@ namespace KHSX.ViewModels
                         }
                     }
                 }
+
+                // Tái phân bổ blocks theo trạng thái IsDayOff hiện tại
+                // (ví dụ: ngày nghỉ đã được bỏ → blocks cần dịch về ngày sớm hơn)
+                RepackAll();
+
+                // Cập nhật giao diện và tính toán deadline ngay sau khi nạp xong dữ liệu
+                UpdateDaySummaries();
+                UpdateLineDeadlines();
             }
             catch (Exception ex)
             {
@@ -594,7 +765,7 @@ namespace KHSX.ViewModels
                 var date = StartDate.AddDays(d);
                 
                 var dayCellA = new DayCell(date);
-                dayCellA.IsDeadline = date.Date == DeadlineDate.Date;
+                dayCellA.IsDeadline = false;
                 dayCellA.HasCustomConfig = false;
                 dayCellA.Config.Workers = rowA.DefaultConfig.Workers;
                 dayCellA.Config.Minutes = rowA.DefaultConfig.Minutes;
@@ -602,7 +773,7 @@ namespace KHSX.ViewModels
                 rowA.Days.Add(dayCellA);
                 
                 var dayCellB = new DayCell(date);
-                dayCellB.IsDeadline = date.Date == DeadlineDate.Date;
+                dayCellB.IsDeadline = false;
                 dayCellB.HasCustomConfig = false;
                 dayCellB.Config.Workers = rowB.DefaultConfig.Workers;
                 dayCellB.Config.Minutes = rowB.DefaultConfig.Minutes;
@@ -878,6 +1049,8 @@ namespace KHSX.ViewModels
         {
             // Tính tổng AllocatedMinutes của tất cả split blocks cùng ParentId
             double totalMinutes = 0;
+            // Xác định line nguồn (line chứa block trước khi kéo đi) để repack sau
+            var sourceRows = new HashSet<ShiftRow>();
             foreach (var row in Rows)
             {
                 foreach (var day in row.Days)
@@ -887,6 +1060,7 @@ namespace KHSX.ViewModels
                         if (b.ParentId == parentId || b.Id == parentId)
                         {
                             totalMinutes += b.AllocatedMinutes;
+                            sourceRows.Add(row);
                         }
                     }
                 }
@@ -895,23 +1069,105 @@ namespace KHSX.ViewModels
             // Làm tròn để tránh floating point issues
             totalMinutes = Math.Round(totalMinutes, 2);
 
-            // Remove tất cả split blocks khỏi grid
-            RemoveBlockFromGrid(parentId);
-            
-            // Tạo block mới với tổng phút đầy đủ để gán lại
-            var reconstructedBlock = new ProductBlock
+            bool isSameLine = sourceRows.Count == 1 && sourceRows.Contains(targetRow);
+
+            if (isSameLine)
             {
-                ParentId = parentId,
-                SourceId = droppedBlock.SourceId,
-                Code = droppedBlock.Code,
-                ProductionGroup = droppedBlock.ProductionGroup,
-                FunctionName = droppedBlock.FunctionName,
-                TotalMinutesRequired = droppedBlock.TotalMinutesRequired,
-                AllocatedMinutes = totalMinutes,
-                DisplayColor = droppedBlock.DisplayColor
-            };
-            
-            AssignBlockRecursively(reconstructedBlock, targetDay, targetRow);
+                // === KÉO TRONG CÙNG LINE = ĐỔI THỨ TỰ ===
+                // Thu thập tất cả block khác (không phải block đang kéo) theo thứ tự hiện có
+                var otherBlocks = new List<ProductBlock>();
+                var processedOtherIds = new HashSet<Guid>();
+
+                foreach (var day in targetRow.Days)
+                {
+                    foreach (var b in day.Blocks.ToList())
+                    {
+                        var bParent = b.ParentId ?? b.Id;
+                        if (bParent == parentId || b.Id == parentId) continue; // Bỏ qua block đang kéo
+                        if (processedOtherIds.Contains(bParent)) continue;
+                        processedOtherIds.Add(bParent);
+
+                        // Tính tổng allocated cho block này
+                        double otherTotal = 0;
+                        foreach (var d in targetRow.Days)
+                        {
+                            foreach (var ob in d.Blocks)
+                            {
+                                if ((ob.ParentId ?? ob.Id) == bParent)
+                                    otherTotal += ob.AllocatedMinutes;
+                            }
+                        }
+
+                        var clone = new ProductBlock
+                        {
+                            Id = Guid.NewGuid(),
+                            ParentId = bParent,
+                            SourceId = b.SourceId,
+                            Code = b.Code,
+                            ProductionGroup = b.ProductionGroup,
+                            FunctionName = b.FunctionName,
+                            TotalMinutesRequired = b.TotalMinutesRequired,
+                            AllocatedMinutes = Math.Round(otherTotal, 2),
+                            DisplayColor = b.DisplayColor
+                        };
+                        otherBlocks.Add(clone);
+                    }
+                }
+
+                // Xoá toàn bộ block trên line
+                foreach (var day in targetRow.Days)
+                    day.Blocks.Clear();
+
+                // Assign block ĐƯỢC KÉO trước (lên đầu line)
+                var reconstructedBlock = new ProductBlock
+                {
+                    ParentId = parentId,
+                    SourceId = droppedBlock.SourceId,
+                    Code = droppedBlock.Code,
+                    ProductionGroup = droppedBlock.ProductionGroup,
+                    FunctionName = droppedBlock.FunctionName,
+                    TotalMinutesRequired = droppedBlock.TotalMinutesRequired,
+                    AllocatedMinutes = totalMinutes,
+                    DisplayColor = droppedBlock.DisplayColor
+                };
+                AssignBlockRecursively(reconstructedBlock, targetRow.Days[0], targetRow);
+
+                // Assign các block còn lại SAU (giữ thứ tự cũ giữa chúng)
+                foreach (var other in otherBlocks)
+                {
+                    AssignBlockRecursively(other, targetRow.Days[0], targetRow);
+                }
+            }
+            else
+            {
+                // === KÉO KHÁC LINE (logic cũ) ===
+                // Remove tất cả split blocks khỏi grid
+                RemoveBlockFromGrid(parentId);
+
+                // Repack các line nguồn (để block còn lại dồn lên lấp chỗ trống)
+                foreach (var srcRow in sourceRows)
+                {
+                    if (srcRow != targetRow) // Không repack line đích vì sắp assign vào đó
+                    {
+                        RepackRowBlocks(srcRow);
+                    }
+                }
+                
+                // Tạo block mới với tổng phút đầy đủ để gán lại
+                var reconstructedBlock = new ProductBlock
+                {
+                    ParentId = parentId,
+                    SourceId = droppedBlock.SourceId,
+                    Code = droppedBlock.Code,
+                    ProductionGroup = droppedBlock.ProductionGroup,
+                    FunctionName = droppedBlock.FunctionName,
+                    TotalMinutesRequired = droppedBlock.TotalMinutesRequired,
+                    AllocatedMinutes = totalMinutes,
+                    DisplayColor = droppedBlock.DisplayColor
+                };
+                
+                AssignBlockRecursively(reconstructedBlock, targetDay, targetRow);
+            }
         }
 
         /// <summary>
