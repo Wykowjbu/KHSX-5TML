@@ -8,7 +8,7 @@
         xmlns:models="clr-namespace:KHSX.Models"
         mc:Ignorable="d"
         Title="Hệ thống Lập Kế Hoạch Sản Xuất" Height="768" Width="1366"
-        WindowState="Maximized">
+        WindowState="Maximized" Icon="Assets/logo.png">
     <Window.DataContext>
         <viewmodels:MainViewModel x:Name="ViewModel"/>
     </Window.DataContext>
@@ -23,7 +23,7 @@
         <local:CustomConfigBackgroundConverter x:Key="CustomConfigBackgroundConverter"/>
         <local:DayCellBackgroundConverter x:Key="DayCellBackgroundConverter"/>
         <local:PercentageToWidthConverter x:Key="PercentageToWidthConverter"/>
-        <local:NumberDivider x:Key="NumberDivider"/>
+
         
         <!-- DataTemplate mặc định cho block trên grid -->
         <DataTemplate DataType="{x:Type models:ProductBlock}">

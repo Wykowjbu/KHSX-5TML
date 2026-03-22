@@ -255,9 +255,45 @@ namespace KHSX.ViewModels
                     
                     // Lấy ra các block mới từ dữ liệu MES vừa import
                     var newBlocks = _excelService.GenerateBlocksFromData();
-                    
+
+                    // --- BẮT ĐẦU FIX: DỌN DẸP CÁC SẢN PHẨM ĐÃ LÀM XONG (SỐ PHÚT = 0) ---
+                    var activeCodes = new HashSet<string>(newBlocks.Select(b => b.Code));
+
+                    // 1. Quét phần Chưa gán (Unassigned)
+                    var obsoleteUnassigned = UnassignedBlocks.Where(b => !activeCodes.Contains(b.Code)).ToList();
+                    foreach (var obsolete in obsoleteUnassigned)
+                    {
+                        UnassignedBlocks.Remove(obsolete);
+                    }
+
+                    // 2. Quét trên Lịch (Grid/Rows)
+                    var rowsToRepackForRemoval = new HashSet<ShiftRow>();
+                    foreach (var row in Rows)
+                    {
+                        bool rowModified = false;
+                        foreach (var day in row.Days)
+                        {
+                            var obsoleteSplits = day.Blocks.Where(b => !activeCodes.Contains(b.Code)).ToList();
+                            foreach (var split in obsoleteSplits)
+                            {
+                                day.Blocks.Remove(split);
+                                rowModified = true;
+                            }
+                        }
+                        if (rowModified) 
+                        {
+                            rowsToRepackForRemoval.Add(row);
+                        }
+                    }
+
+                    // 3. Đóng gói lại (dồn về bên trái) những hàng vừa bị xoá mất mảnh ghép
+                    foreach (var row in rowsToRepackForRemoval)
+                    {
+                        RepackRowBlocks(row);
+                    }
+                    // --- KẾT THÚC FIX DỌN DẸP ---
+
                     // 1. Cập nhật các Block MỚI và CŨ chưa gán
-                    foreach (var newBlock in newBlocks)
                     {
                         var unassignedMatch = UnassignedBlocks.FirstOrDefault(b => b.Code == newBlock.Code);
                         if (unassignedMatch != null)
