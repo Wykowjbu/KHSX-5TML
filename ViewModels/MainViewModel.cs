@@ -294,6 +294,7 @@ namespace KHSX.ViewModels
                     // --- KẾT THÚC FIX DỌN DẸP ---
 
                     // 1. Cập nhật các Block MỚI và CŨ chưa gán
+                    foreach (var newBlock in newBlocks)
                     {
                         var unassignedMatch = UnassignedBlocks.FirstOrDefault(b => b.Code == newBlock.Code);
                         if (unassignedMatch != null)
@@ -336,49 +337,54 @@ namespace KHSX.ViewModels
                                         .Distinct()
                                         .ToList();
 
-                                    // Xác định line đầu tiên block xuất hiện
-                                    var firstSplitInfo = splitsOnGrid
+                                    var splitInfos = splitsOnGrid
                                         .SelectMany(b => Rows.SelectMany(row => row.Days.Where(day => day.Blocks.Contains(b)).Select(day => new { Block = b, Day = day, Row = row })))
                                         .OrderBy(x => x.Day.Date)
-                                        .FirstOrDefault();
-                                        
-                                    if (firstSplitInfo != null)
+                                        .ToList();
+
+                                    if (splitInfos.Any())
                                     {
-                                        // Xoá SẠCH TẤT CẢ các mảnh của block này trên mọi DayCell
-                                        foreach (var r in Rows)
+                                        // Cập nhật TotalMinutesRequired cho tất cả các mảnh hiện có
+                                        foreach (var info in splitInfos)
                                         {
-                                            foreach (var d in r.Days)
+                                            info.Block.TotalMinutesRequired = newBlock.TotalMinutesRequired;
+                                        }
+
+                                        if (minuteDiff > 0)
+                                        {
+                                            // Tăng sản lượng (Hướng 2): Cộng dồn toàn bộ vào mảnh cuối cùng (trễ nhất)
+                                            var lastSplit = splitInfos.Last();
+                                            lastSplit.Block.AllocatedMinutes += minuteDiff;
+                                        }
+                                        else
+                                        {
+                                            // Giảm sản lượng: Trừ lùi từ mảnh cuối cùng trở về trước
+                                            double remainingToSubtract = Math.Abs(minuteDiff);
+                                            for (int i = splitInfos.Count - 1; i >= 0; i--)
                                             {
-                                                var splitsToRemove = d.Blocks.Where(b => b.Code == newBlock.Code).ToList();
-                                                foreach (var split in splitsToRemove)
+                                                if (remainingToSubtract <= 0.01) break;
+                                                
+                                                var info = splitInfos[i];
+                                                if (info.Block.AllocatedMinutes > remainingToSubtract)
                                                 {
-                                                    d.Blocks.Remove(split);
+                                                    info.Block.AllocatedMinutes -= remainingToSubtract;
+                                                    remainingToSubtract = 0;
+                                                }
+                                                else
+                                                {
+                                                    remainingToSubtract -= info.Block.AllocatedMinutes;
+                                                    info.Day.Blocks.Remove(info.Block); // Xoá hẳn mảnh này khỏi lưới
+                                                    info.Block.AllocatedMinutes = 0;
                                                 }
                                             }
                                         }
-                                        
-                                        // Repack các line bị ảnh hưởng TRƯỚC (để các block khác dồn lên trước)
+
+                                        // Gọi dồn dòng cho các line bị ảnh hưởng.
+                                        // RepackRowBlocks sẽ đọc các Block CÒN LẠI mượt mà từ trái qua phải, nhờ đó giữ nguyên trật tự của Sp1 với Sp2.
                                         foreach (var affectedRow in affectedRows)
                                         {
                                             RepackRowBlocks(affectedRow);
                                         }
-
-                                        // Gom toàn bộ số lượng mới thành 1 block nguyên bản
-                                        var reconstructedBlock = new ProductBlock
-                                        {
-                                            Id = Guid.NewGuid(),
-                                            SourceId = newBlock.SourceId,
-                                            Code = newBlock.Code,
-                                            ProductionGroup = newBlock.ProductionGroup,
-                                            FunctionName = newBlock.FunctionName,
-                                            TotalMinutesRequired = newBlock.TotalMinutesRequired,
-                                            AllocatedMinutes = newBlock.TotalMinutesRequired,
-                                            DisplayColor = splitsOnGrid.First().DisplayColor
-                                        };
-                                        reconstructedBlock.ParentId = reconstructedBlock.Id;
-
-                                        // Thả lại block đó VÀO LINE ĐẦU TIÊN (lúc này sp2 đã dồn lên, sp1 sẽ nối tiếp sau sp2)
-                                        AssignBlockRecursively(reconstructedBlock, firstSplitInfo.Day, firstSplitInfo.Row);
                                     }
                                 }
                             }
@@ -491,8 +497,8 @@ namespace KHSX.ViewModels
             return DateTime.MaxValue;
         }
 
-        public event Action RequestDeadlineDialog;
-        public event Action RequestConfigGroupsDialog;
+        public event Action? RequestDeadlineDialog;
+        public event Action? RequestConfigGroupsDialog;
 
         public void UpdateDaySummaries()
         {
@@ -559,11 +565,16 @@ namespace KHSX.ViewModels
                             Code = split.Code,
                             ProductionGroup = split.ProductionGroup,
                             FunctionName = split.FunctionName,
-                            TotalMinutesRequired = totalOnThisRow,
+                            TotalMinutesRequired = split.TotalMinutesRequired,
                             AllocatedMinutes = totalOnThisRow,
                             DisplayColor = split.DisplayColor
                         };
-                        orderedBlocks.Add(reconstructed);
+                        
+                        // Bỏ qua các khối có số phút <= 0 sau khi trừ
+                        if (totalOnThisRow > 0.01)
+                        {
+                            orderedBlocks.Add(reconstructed);
+                        }
                     }
                     day.Blocks.Remove(split);
                 }
@@ -721,6 +732,10 @@ namespace KHSX.ViewModels
                         }
                     }
                 }
+
+                // Cập nhật giao diện và tính toán deadline ngay sau khi nạp xong dữ liệu
+                UpdateDaySummaries();
+                UpdateLineDeadlines();
             }
             catch (Exception ex)
             {
