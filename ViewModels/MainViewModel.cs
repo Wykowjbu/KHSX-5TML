@@ -733,6 +733,10 @@ namespace KHSX.ViewModels
                     }
                 }
 
+                // Tái phân bổ blocks theo trạng thái IsDayOff hiện tại
+                // (ví dụ: ngày nghỉ đã được bỏ → blocks cần dịch về ngày sớm hơn)
+                RepackAll();
+
                 // Cập nhật giao diện và tính toán deadline ngay sau khi nạp xong dữ liệu
                 UpdateDaySummaries();
                 UpdateLineDeadlines();

@@ -671,6 +671,13 @@ namespace KHSX
                     day.Config.Minutes = parentRow.DefaultConfig.Minutes;
                     day.Config.Efficiency = parentRow.DefaultConfig.Efficiency;
                     day.HasCustomConfig = false;
+                    if (vm != null)
+                    {
+                        vm.RepackRowBlocks(parentRow);
+                        var siblingRow = vm.Rows.FirstOrDefault(r => r != parentRow && r.ParentLineName == parentRow.ParentLineName);
+                        if (siblingRow != null)
+                            vm.RepackRowBlocks(siblingRow);
+                    }
                     vm?.SaveConfigurationCommand.Execute(null);
                     MessageBox.Show("Đã reset về cấu hình mặc định của ca", "Thành công", MessageBoxButton.OK, MessageBoxImage.Information);
                     dialog.DialogResult = true;
@@ -827,7 +834,10 @@ namespace KHSX
                 }
                 if (vm?.GetType().GetMethod("RepackRowBlocks") != null)
                 {
-                    vm.GetType().GetMethod("RepackRowBlocks").Invoke(vm, new object[] { parentRow });
+                    vm.RepackRowBlocks(parentRow);
+                    var siblingRow = vm.Rows.FirstOrDefault(r => r != parentRow && r.ParentLineName == parentRow.ParentLineName);
+                    if (siblingRow != null)
+                        vm.RepackRowBlocks(siblingRow);
                 }
 
                 vm?.SaveConfigurationCommand.Execute(null);
