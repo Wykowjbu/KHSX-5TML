@@ -950,8 +950,7 @@ namespace KHSX.ViewModels
                     var blockCodes = row.Days
                         .SelectMany(d => d.Blocks.Select(b => b.Code))
                         .Distinct()
-                        .OrderBy(c => c)
-                        .ToList();
+                        .ToList(); // Giữ thứ tự xuất hiện trên lưới (không sắp theo tên)
 
                     if (blockCodes.Count > 0)
                         lineBlockData[row.RowName] = blockCodes;
@@ -991,16 +990,17 @@ namespace KHSX.ViewModels
                         productOrder,
                         blockOrder ?? new(),
                         StartDate,
-                        DeadlineDate);
+                        DeadlineDate,
+                        _customDeadlines);
 
-                    MessageBox.Show($"Export thành công!\nFile: {saveDialog.FileName}",
+                    MessageBox.Show($"Xuất file thành công!\nFile: {saveDialog.FileName}",
                         "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Lỗi khi export: {ex.Message}",
-                    "Lỗi Export", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Lỗi khi xuất file: {ex.Message}",
+                    "Lỗi Xuất File", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -1449,7 +1449,7 @@ namespace KHSX.ViewModels
             sb.AppendLine();
             sb.AppendLine($"📊 TỔNG: {exceedingInfo.Count} sản phẩm, {totalExceedMinutes:0.##} phút vượt deadline");
             sb.AppendLine();
-            sb.AppendLine("💡 MẸO: Kéo block viền đỏ sang line khác để điều phối.");
+            sb.AppendLine("💡 MẸO: Kéo BuildGroup viền đỏ sang line khác để điều phối.");
             sb.AppendLine("   Chỉ phần vượt deadline sẽ được di chuyển.");
 
             MessageBox.Show(sb.ToString(), "Cảnh báo Vượt Deadline", MessageBoxButton.OK, MessageBoxImage.Warning);

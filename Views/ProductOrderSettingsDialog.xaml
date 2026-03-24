@@ -19,7 +19,7 @@
         <StackPanel Grid.Row="0" Margin="0,0,0,12">
             <TextBlock Text="⚙️ Thứ tự sản phẩm trong từng BuildGroup"
                        FontWeight="SemiBold" FontSize="14"/>
-            <TextBlock Text="Sản phẩm ở trên sẽ được làm trước. Thứ tự này áp dụng khi export." 
+            <TextBlock Text="Sản phẩm ở trên sẽ được làm trước. Thứ tự này áp dụng khi xuất file." 
                        FontSize="11" Foreground="#666" Margin="0,4,0,0"/>
         </StackPanel>
 

@@ -99,7 +99,7 @@ namespace KHSX
             headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.5, GridUnitType.Star) });
             
             var h1 = new TextBlock { Text = "Build Group", FontWeight = FontWeights.Bold };
-            var h2 = new TextBlock { Text = "fuction", FontWeight = FontWeights.Bold };
+            var h2 = new TextBlock { Text = "function", FontWeight = FontWeights.Bold };
             var h3 = new TextBlock { Text = "Gr.xxx Mặc Định", FontWeight = FontWeights.Bold };
             Grid.SetColumn(h1, 0); Grid.SetColumn(h2, 1); Grid.SetColumn(h3, 2);
             headerRow.Children.Add(h1); headerRow.Children.Add(h2); headerRow.Children.Add(h3);

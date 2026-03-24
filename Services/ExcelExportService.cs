@@ -44,7 +44,8 @@ namespace KHSX.Services
             ProductOrderSettings productOrder,
             Dictionary<string, List<string>> blockOrder,
             DateTime startDate,
-            DateTime deadlineDate)
+            DateTime deadlineDate,
+            List<DeadlineData>? deadlines = null)
         {
             using var workbook = new XLWorkbook();
 
@@ -53,6 +54,9 @@ namespace KHSX.Services
                 .GroupBy(r => r.ParentLineName)
                 .OrderBy(g => g.Key)
                 .ToList();
+
+            // Load productGroups để tra ProductionGroup của BuildGroup
+            var productGroups = JsonStorage.Load<List<ProductGroupData>>("productGroups.json") ?? new List<ProductGroupData>();
 
             // Sheet Tổng Quan
             var summarySheet = workbook.AddWorksheet("Tổng Quan");
@@ -66,10 +70,20 @@ namespace KHSX.Services
 
                 var sheetName = SanitizeSheetName(lineGroup.Key);
                 var sheet = workbook.AddWorksheet(sheetName);
-                WriteLineSheet(sheet, lineGroup, products, openMinutes, productOrder, blockOrder, startDate, deadlineDate);
+                WriteLineSheet(sheet, lineGroup, products, openMinutes, productOrder, blockOrder, startDate, deadlineDate, deadlines ?? new(), productGroups);
             }
 
             workbook.SaveAs(filePath);
+        }
+
+        /// <summary>Lấy deadline của 1 BuildGroup dựa theo ProductionGroup của nó.</summary>
+        private DateTime? GetBuildGroupDeadline(string buildGroupCode, List<DeadlineData> deadlines, List<ProductGroupData> productGroups)
+        {
+            if (deadlines == null || deadlines.Count == 0) return null;
+            var pg = productGroups.FirstOrDefault(g => g.GroupId == buildGroupCode);
+            if (pg == null || string.IsNullOrEmpty(pg.ProductionGroup)) return null;
+            var dl = deadlines.FirstOrDefault(d => d.GroupNumber == pg.ProductionGroup);
+            return dl?.Deadline.Date;
         }
 
         private string SanitizeSheetName(string name)
@@ -161,7 +175,9 @@ namespace KHSX.Services
             ProductOrderSettings productOrder,
             Dictionary<string, List<string>> blockOrder,
             DateTime startDate,
-            DateTime deadlineDate)
+            DateTime deadlineDate,
+            List<DeadlineData> deadlines,
+            List<ProductGroupData> productGroups)
         {
             int colStart = 2; // Cột A = label, Cột B+ = ngày
             int row = 1;
@@ -179,8 +195,15 @@ namespace KHSX.Services
             sheet.Cell(row, 1).Style.Font.Underline = XLFontUnderlineValues.Single;
             row += 2;
 
-            // Tính phạm vi ngày
-            int totalDays = (int)(deadlineDate.Date - startDate.Date).TotalDays + 1;
+            // Tính phạm vi ngày: mở rộng đến ngày có block cuối cùng nếu vượt deadline
+            var lastBlockDate = lineGroup
+                .SelectMany(r => r.Days)
+                .Where(d => d.Blocks.Count > 0)
+                .Select(d => d.Date.Date)
+                .DefaultIfEmpty(deadlineDate.Date)
+                .Max();
+            var effectiveEndDate = lastBlockDate > deadlineDate.Date ? lastBlockDate : deadlineDate.Date;
+            int totalDays = (int)(effectiveEndDate - startDate.Date).TotalDays + 1;
 
             // Ghi từng Ca trong Line
             bool firstShift = true;
@@ -228,15 +251,30 @@ namespace KHSX.Services
                 }
                 row++;
 
+                // Tính deadline dict: BuildGroupCode → ngày deadline
+                var bgDeadlineMap = new Dictionary<string, DateTime?>();
+                foreach (var bgCode in orderedBuildGroups)
+                    bgDeadlineMap[bgCode] = GetBuildGroupDeadline(bgCode, deadlines, productGroups);
+
                 // Dữ liệu từng BuildGroup
                 foreach (var buildGroupCode in orderedBuildGroups)
                 {
+                    // Deadline của BuildGroup này
+                    DateTime? bgDeadline = bgDeadlineMap.TryGetValue(buildGroupCode, out var dl) ? dl : null;
+
+                    // Màu nền: vàng = trong deadline, cam nhạt = sau deadline
+                    var headerBgNormal = XLColor.LightYellow;
+                    var headerBgOver = XLColor.FromHtml("#FFE0B2"); // cam nhạt
+
                     // Header BuildGroup
                     sheet.Cell(row, 1).Value = $"BuildGroup: {buildGroupCode}";
                     sheet.Cell(row, 1).Style.Font.Bold = true;
-                    sheet.Cell(row, 1).Style.Fill.BackgroundColor = XLColor.LightYellow;
+                    sheet.Cell(row, 1).Style.Fill.BackgroundColor = headerBgNormal;
                     for (int d = 0; d < allocations.Count; d++)
-                        sheet.Cell(row, colStart + d).Style.Fill.BackgroundColor = XLColor.LightYellow;
+                    {
+                        bool isOver = bgDeadline.HasValue && allocations[d].Date.Date > bgDeadline.Value;
+                        sheet.Cell(row, colStart + d).Style.Fill.BackgroundColor = isOver ? headerBgOver : headerBgNormal;
+                    }
                     row++;
 
                     // Phút phân bổ
@@ -245,10 +283,13 @@ namespace KHSX.Services
                     for (int d = 0; d < allocations.Count; d++)
                     {
                         var alloc = allocations[d];
+                        bool isOver = bgDeadline.HasValue && alloc.Date.Date > bgDeadline.Value;
                         double bgMin = alloc.IsDayOff ? 0 :
                             alloc.Products.Where(p => p.GroupId == buildGroupCode).Sum(p => p.MinutesUsed);
-                        sheet.Cell(row, colStart + d).Value = Math.Round(bgMin, 1);
-                        sheet.Cell(row, colStart + d).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                        var cell = sheet.Cell(row, colStart + d);
+                        cell.Value = Math.Round(bgMin, 1);
+                        cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+                        if (isOver) cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#FFE0B2");
                     }
                     row++;
 
@@ -264,23 +305,22 @@ namespace KHSX.Services
                             for (int d = 0; d < allocations.Count; d++)
                             {
                                 var alloc = allocations[d];
+                                bool isOver = bgDeadline.HasValue && alloc.Date.Date > bgDeadline.Value;
+                                var cell = sheet.Cell(row, colStart + d);
+
                                 if (alloc.IsDayOff)
                                 {
-                                    sheet.Cell(row, colStart + d).Value = 0;
-                                    sheet.Cell(row, colStart + d).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
-                                    continue;
-                                }
-
-                                var pa = alloc.Products.FirstOrDefault(p => p.ProductId == sp);
-                                if (pa != null && pa.ProductCount > 0)
-                                {
-                                    sheet.Cell(row, colStart + d).Value = pa.IsCompleted ? $"{pa.ProductCount} sp ✅" : $"{pa.ProductCount} sp";
+                                    cell.Value = 0;
+                                    cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
                                 }
                                 else
                                 {
-                                    sheet.Cell(row, colStart + d).Value = "—";
+                                    var pa = alloc.Products.FirstOrDefault(p => p.ProductId == sp);
+                                    cell.Value = (pa != null && pa.ProductCount > 0) ? $"{pa.ProductCount} sp" : "—";
+                                    cell.Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
                                 }
-                                sheet.Cell(row, colStart + d).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+
+                                if (isOver) cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#FFE0B2");
                             }
                             row++;
                         }
