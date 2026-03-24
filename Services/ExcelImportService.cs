@@ -243,7 +243,17 @@ namespace KHSX.Services
                     }
                 }
 
-                JsonStorage.Save("openMinutes.json", openMins);
+                // Gom nhóm theo ProductId: cộng dồn OpenMinutes cho các dòng có cùng mã sản phẩm
+                var mergedMins = openMins
+                    .GroupBy(o => o.ProductId)
+                    .Select(g => new OpenMinutesData
+                    {
+                        ProductId = g.Key,
+                        OpenMinutes = Math.Round(g.Sum(o => o.OpenMinutes), 2)
+                    })
+                    .ToList();
+
+                JsonStorage.Save("openMinutes.json", mergedMins);
             }
             catch (Exception ex)
             {

@@ -102,7 +102,7 @@ namespace KHSX.Models
                     return $"{Code}\n" +
                            $"Phút: {AllocatedMinutes:0.##}\n" +
                            $"⚠️ VƯỢT DEADLINE\n" +
-                           $"💡 Kéo block này sang line khác để điều phối.\n" +
+                           $"💡 Kéo BuildGroup này sang line khác để điều phối.\n" +
                            $"   Chỉ phần vượt deadline sẽ được di chuyển.";
                 }
                 return $"{Code}\n" +

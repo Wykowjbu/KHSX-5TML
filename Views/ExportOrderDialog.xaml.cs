@@ -41,7 +41,7 @@ namespace KHSX.Views
         {
             InitializeComponent();
 
-            foreach (var kvp in lineBlockData.OrderBy(k => k.Key))
+            foreach (var kvp in lineBlockData) // Giữ thứ tự Rows gốc, không sort theo tên
             {
                 // Chỉ hiện line có >1 block
                 if (kvp.Value.Count <= 1) continue;
