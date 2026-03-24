@@ -1087,14 +1087,71 @@ namespace KHSX.ViewModels
         }
 
         /// <summary>
-        /// Xử lý kéo thả block VƯỢT deadline - chỉ di chuyển phần sau deadline
+        /// Xử lý kéo thả block VƯỢT deadline - chỉ di chuyển phần sau deadline.
+        /// Nếu target line đã có block cùng ParentId → gộp toàn bộ để tránh duplicate.
         /// </summary>
         private void HandleDropExceedingBlock(ProductBlock droppedBlock, Guid parentId, DayCell targetDay, ShiftRow targetRow)
         {
-            // Tính tổng phút TRƯỚC deadline và SAU deadline
+            // ── Kiểm tra target line có block cùng ParentId không ──
+            bool targetAlreadyHasSameBlock = targetRow.Days
+                .Any(d => d.Blocks.Any(b => b.ParentId == parentId || b.Id == parentId));
+
+            if (targetAlreadyHasSameBlock)
+            {
+                // GỘP SPLITS: block cùng ParentId đang nằm ở cả source lẫn target.
+                // Mục tiêu: gộp thành 1 block duy nhất trên target, KHÔNG xáo trộn thứ tự SP khác.
+                //
+                // Cách: xóa tất cả splits của SP1 khỏi mọi row (source và target),
+                // repack mọi row bị ảnh hưởng, rồi dùng HandleDropFullBlock-style
+                // re-assign SP1 vào target với tổng phút đầy đủ.
+                // → SP1 sẽ điền vào capacity còn trống của target theo thứ tự ngày tự nhiên,
+                //   sau SP3-SP4 (vì SP3-SP4 đã chiếm các ngày đầu sau repack).
+
+                // 1. Tính tổng phút SP1 từ MỌI row
+                double totalMinutes = 0;
+                var allSourceRows = new HashSet<ShiftRow>();
+                foreach (var row in Rows)
+                    foreach (var day in row.Days)
+                        foreach (var b in day.Blocks)
+                            if (b.ParentId == parentId || b.Id == parentId)
+                            {
+                                totalMinutes += b.AllocatedMinutes;
+                                allSourceRows.Add(row);
+                            }
+                totalMinutes = Math.Round(totalMinutes, 2);
+
+                // 2. Xóa toàn bộ SP1 khỏi MỌI row
+                RemoveBlockFromGrid(parentId);
+
+                // 3. Repack tất cả row bị ảnh hưởng (giữ đúng thứ tự SP3-SP4-SP2 trên source,
+                //    và đúng thứ tự SP3-SP4-SP2 trên target nếu có)
+                foreach (var srcRow in allSourceRows)
+                    RepackRowBlocks(srcRow);
+
+                // 4. Re-assign SP1 tổng vào target → điền capacity còn trống theo thứ tự ngày
+                //    (sẽ đứng sau các block đã chiếm trước nếu không còn capacity trước đó)
+                var reconstructedBlock = new ProductBlock
+                {
+                    ParentId = parentId,
+                    SourceId = droppedBlock.SourceId,
+                    Code = droppedBlock.Code,
+                    ProductionGroup = droppedBlock.ProductionGroup,
+                    FunctionName = droppedBlock.FunctionName,
+                    TotalMinutesRequired = droppedBlock.TotalMinutesRequired,
+                    AllocatedMinutes = totalMinutes,
+                    DisplayColor = droppedBlock.DisplayColor
+                };
+                AssignBlockRecursively(reconstructedBlock, targetRow.Days[0], targetRow);
+
+                MessageBox.Show($"Đã gộp toàn bộ {droppedBlock.Code} ({totalMinutes:0.##} phút) về {targetRow.RowName}.",
+                    "Gộp block thành công", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            // ── KHÔNG có block cùng ParentId trên target: logic cũ (chỉ move phần sau-deadline) ──
             double minutesBeforeDeadline = 0;
             double minutesAfterDeadline = 0;
-            
+
             foreach (var row in Rows)
             {
                 foreach (var day in row.Days)
@@ -1104,13 +1161,9 @@ namespace KHSX.ViewModels
                         if (b.ParentId == parentId || b.Id == parentId)
                         {
                             if (day.Date <= GetDeadlineForBlock(b))
-                            {
                                 minutesBeforeDeadline += b.AllocatedMinutes;
-                            }
                             else
-                            {
                                 minutesAfterDeadline += b.AllocatedMinutes;
-                            }
                         }
                     }
                 }
@@ -1119,7 +1172,6 @@ namespace KHSX.ViewModels
             minutesBeforeDeadline = Math.Round(minutesBeforeDeadline, 2);
             minutesAfterDeadline = Math.Round(minutesAfterDeadline, 2);
 
-            // Nếu không có phút nào sau deadline, không cần làm gì
             if (minutesAfterDeadline <= 0.01)
             {
                 MessageBox.Show("Không có phút nào sau deadline để di chuyển.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -1128,7 +1180,16 @@ namespace KHSX.ViewModels
 
             // Xóa CHỈ các block SAU deadline (giữ nguyên phần trước deadline)
             RemoveBlocksAfterDeadline(parentId);
-            
+
+            // Repack line nguồn để các block phía sau dồn lên lấp chỗ trống
+            var sourceRows = Rows.Where(r =>
+                r.Days.Any(d => d.Blocks.Any(b => b.ParentId == parentId || b.Id == parentId))).ToList();
+            foreach (var srcRow in sourceRows)
+            {
+                if (srcRow != targetRow)
+                    RepackRowBlocks(srcRow);
+            }
+
             // Tạo block mới với số phút SAU deadline để gán vào line mới
             var blockToMove = new ProductBlock
             {
@@ -1141,10 +1202,9 @@ namespace KHSX.ViewModels
                 AllocatedMinutes = minutesAfterDeadline,
                 DisplayColor = droppedBlock.DisplayColor
             };
-            
+
             AssignBlockRecursively(blockToMove, targetDay, targetRow);
 
-            // Thông báo cho user
             string message = $"Đã di chuyển {minutesAfterDeadline:0.##} phút (phần sau deadline) của {droppedBlock.Code} sang {targetRow.RowName}.\n" +
                            $"Giữ nguyên {minutesBeforeDeadline:0.##} phút (phần trước deadline) ở vị trí cũ.";
             MessageBox.Show(message, "Điều phối thành công", MessageBoxButton.OK, MessageBoxImage.Information);
