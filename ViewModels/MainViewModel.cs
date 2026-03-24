@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using KHSX.Models;
 using KHSX.Services;
+using Microsoft.Win32;
 
 namespace KHSX.ViewModels
 {
@@ -501,6 +502,8 @@ namespace KHSX.ViewModels
 
         public event Action? RequestDeadlineDialog;
         public event Action? RequestConfigGroupsDialog;
+        public event Action? RequestProductOrderSettingsDialog;
+        public event Func<Dictionary<string, List<string>>?, Dictionary<string, List<string>>?>? RequestExportOrderDialog;
 
         public void UpdateDaySummaries()
         {
@@ -895,6 +898,109 @@ namespace KHSX.ViewModels
                 {
                     MessageBox.Show("Các line hiện tại đang trống, không có sản phẩm nào để xoá.", "Thông Báo", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
+            }
+        }
+
+        [RelayCommand]
+        private void ConfigProductOrder()
+        {
+            RequestProductOrderSettingsDialog?.Invoke();
+        }
+
+        [RelayCommand]
+        private void ExportPlan()
+        {
+            try
+            {
+                // 1. Load dữ liệu cần thiết
+                var products = JsonStorage.Load<List<ProductData>>("products.json") ?? new();
+                var openMinutes = JsonStorage.Load<List<OpenMinutesData>>("openMinutes.json") ?? new();
+                var productOrder = JsonStorage.Load<ProductOrderSettings>("productOrderSettings.json") ?? new();
+
+                // 2. Kiểm tra có dữ liệu trên grid không
+                bool hasAnyBlocks = Rows.Any(r => r.Days.Any(d => d.Blocks.Count > 0));
+                if (!hasAnyBlocks)
+                {
+                    MessageBox.Show("Không có BuildGroup nào trên lưới. Vui lòng import dữ liệu và gán block trước khi export.",
+                        "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                // 2b. Cảnh báo nếu có SP vượt deadline
+                var exceedingInfo = GetDeadlineExceedingInfo();
+                if (exceedingInfo.Count > 0)
+                {
+                    var sb = new StringBuilder();
+                    sb.AppendLine("⚠️ CÓ SẢN PHẨM ĐANG VƯỢT DEADLINE:");
+                    sb.AppendLine();
+                    foreach (var info in exceedingInfo)
+                        sb.AppendLine($"• {info.ProductCode}: {info.ExceedMinutes:0.##} phút ({info.RowName})");
+                    sb.AppendLine();
+                    sb.AppendLine("Bạn có muốn tiếp tục export không?");
+
+                    var warningResult = MessageBox.Show(sb.ToString(), "Cảnh báo Vượt Deadline",
+                        MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                    if (warningResult == MessageBoxResult.No) return;
+                }
+
+                // 3. Lấy danh sách BuildGroup per ca (mỗi Ca riêng - dùng tên Ca thật)
+                var lineBlockData = new Dictionary<string, List<string>>();
+                foreach (var row in Rows)
+                {
+                    var blockCodes = row.Days
+                        .SelectMany(d => d.Blocks.Select(b => b.Code))
+                        .Distinct()
+                        .OrderBy(c => c)
+                        .ToList();
+
+                    if (blockCodes.Count > 0)
+                        lineBlockData[row.RowName] = blockCodes;
+                }
+
+                // 4. Nếu có line nào >1 block → mở popup sắp xếp block
+                Dictionary<string, List<string>>? blockOrder = null;
+                bool needsBlockOrderPopup = lineBlockData.Any(kvp => kvp.Value.Count > 1);
+
+                if (needsBlockOrderPopup)
+                {
+                    blockOrder = RequestExportOrderDialog?.Invoke(lineBlockData);
+                    if (blockOrder == null)
+                        return; // User đã hủy
+                }
+                else
+                {
+                    blockOrder = lineBlockData;
+                }
+
+                // 5. Mở Save dialog
+                var saveDialog = new SaveFileDialog
+                {
+                    Filter = "Excel Files|*.xlsx",
+                    FileName = $"KHSX_{DateTime.Now:dd-MM-yyyy}.xlsx",
+                    Title = "Lưu file Kế Hoạch Sản Xuất"
+                };
+
+                if (saveDialog.ShowDialog() == true)
+                {
+                    var exportService = new ExcelExportService();
+                    exportService.Export(
+                        saveDialog.FileName,
+                        Rows,
+                        products,
+                        openMinutes,
+                        productOrder,
+                        blockOrder ?? new(),
+                        StartDate,
+                        DeadlineDate);
+
+                    MessageBox.Show($"Export thành công!\nFile: {saveDialog.FileName}",
+                        "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Lỗi khi export: {ex.Message}",
+                    "Lỗi Export", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
