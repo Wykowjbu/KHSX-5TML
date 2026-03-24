@@ -29,7 +29,11 @@ namespace KHSX.Services
             public bool IsDayOff { get; set; }
             public double TotalCapacity { get; set; }
             public double Workers { get; set; }
-            public List<DailyProductAllocation> Products { get; set; } = new();
+            
+            // Tổng số phút phân bổ trên lưới cho TỪNG BuildGroup trong ngày (Không phụ thuộc SP)
+            public Dictionary<string, double> BgCapacities { get; set; } = new Dictionary<string, double>();
+
+            public List<DailyProductAllocation> Products { get; set; } = new List<DailyProductAllocation>();
         }
 
         /// <summary>
@@ -246,7 +250,7 @@ namespace KHSX.Services
                     {
                         var alloc = allocations[d];
                         double bgMin = alloc.IsDayOff ? 0 :
-                            alloc.Products.Where(p => p.GroupId == buildGroupCode).Sum(p => p.MinutesUsed);
+                            (alloc.BgCapacities.TryGetValue(buildGroupCode, out double cap) ? cap : 0);
                         sheet.Cell(row, colStart + d).Value = Math.Round(bgMin, 1);
                         sheet.Cell(row, colStart + d).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
                     }
@@ -341,23 +345,35 @@ namespace KHSX.Services
             var orderedBuildGroups = GetOrderedBuildGroupsForRow(shiftRow, blockOrder);
             var spByGroup = GetProductsByBuildGroup(orderedBuildGroups, products, openMinutes, productOrder);
 
-            // Tạo danh sách SP tuần tự
-            var sequentialSPs = new List<(string ProductId, string GroupId, double RemainingMinutes, double MinPerSP)>();
+            // Khởi tạo state cho TỪNG sản phẩm (cần biết SP nào còn dư bao nhiêu phút hở)
+            // Thay vì dùng list phẳng, dùng dictionary GroupId -> List<SPState>
+            var stateByGroup = new Dictionary<string, List<ProductState>>();
             foreach (var bgCode in orderedBuildGroups)
             {
-                if (!spByGroup.TryGetValue(bgCode, out var spList)) continue;
-                foreach (var spId in spList)
+                var spListForGroup = new List<ProductState>();
+                if (spByGroup.TryGetValue(bgCode, out var spIds))
                 {
-                    var prod = products.FirstOrDefault(p => p.ProductId == spId);
-                    var om = openMinutes.FirstOrDefault(o => o.ProductId == spId);
-                    if (om == null || om.OpenMinutes <= 0) continue;
-                    double minPerSP = prod?.MinutesPerProduct ?? 0;
-                    sequentialSPs.Add((spId, bgCode, om.OpenMinutes, minPerSP));
-                }
-            }
+                    foreach (var spId in spIds)
+                    {
+                        var prod = products.FirstOrDefault(p => p.ProductId == spId);
+                        var om = openMinutes.FirstOrDefault(o => o.ProductId == spId);
+                        if (om == null || om.OpenMinutes <= 0) continue;
+                        
+                        double minPerSP = prod?.MinutesPerProduct ?? 0;
+                        if (minPerSP <= 0) continue;
 
-            int currentSPIndex = 0;
-            double currentSPRemaining = sequentialSPs.Count > 0 ? sequentialSPs[0].RemainingMinutes : 0;
+                        spListForGroup.Add(new ProductState
+                        {
+                            ProductId = spId,
+                            GroupId = bgCode,
+                            OriginalMinutes = om.OpenMinutes,
+                            RemainingMinutes = om.OpenMinutes,
+                            MinPerSP = minPerSP
+                        });
+                    }
+                }
+                stateByGroup[bgCode] = spListForGroup;
+            }
 
             for (int d = 0; d < totalDays; d++)
             {
@@ -376,63 +392,68 @@ namespace KHSX.Services
                     Workers = workers
                 };
 
-                if (!isDayOff && currentSPIndex < sequentialSPs.Count)
+                if (!isDayOff && dayCell != null && dayCell.Blocks.Count > 0)
                 {
-                    double remainingCapacity = capacity;
-
-                    while (remainingCapacity > 0.01 && currentSPIndex < sequentialSPs.Count)
+                    // Lăn qua từng BuildGroup CÓ CHỨA BLOCK trong ngày hôm nay
+                    // Capacity của Bg trong ngày = tổng AllocatedMinutes của các khối block thuộc Bg này
+                    foreach (var bgCode in orderedBuildGroups)
                     {
-                        var sp = sequentialSPs[currentSPIndex];
-                        double minPerSP = sp.MinPerSP;
+                        double bgCapacityInDay = dayCell.Blocks
+                            .Where(b => b.Code == bgCode)
+                            .Sum(b => b.AllocatedMinutes);
 
-                        if (minPerSP <= 0)
+                        if (bgCapacityInDay <= 0.01) continue;
+                        
+                        // LƯU LẠI NĂNG LỰC GỐC CỦA GROUP TRONG NGÀY ĐỂ RENDER EXCEL CHUẨN XÁC
+                        dailyAlloc.BgCapacities[bgCode] = bgCapacityInDay;
+
+                        if (!stateByGroup.TryGetValue(bgCode, out var spList) || spList.Count == 0) continue;
+
+                        double remainingBgCapacity = bgCapacityInDay;
+
+                        // Rút ruột capacity này cho các sản phẩm trong group
+                        for (int i = 0; i < spList.Count && remainingBgCapacity > 0.01; i++)
                         {
-                            currentSPIndex++;
-                            if (currentSPIndex < sequentialSPs.Count)
-                                currentSPRemaining = sequentialSPs[currentSPIndex].RemainingMinutes;
-                            continue;
-                        }
+                            var sp = spList[i];
+                            if (sp.RemainingMinutes <= 0.01) continue;
 
-                        double minutesToUse = Math.Min(remainingCapacity, currentSPRemaining);
-                        int productCount = (int)Math.Ceiling(minutesToUse / minPerSP);
-                        double actualMinutesUsed = productCount * minPerSP;
+                            double minutesToUse = Math.Min(remainingBgCapacity, sp.RemainingMinutes);
+                            
+                            // Tổng số lượng SP có thể làm tính đến thời điểm hết 'minutesToUse' này
+                            // (Bao gồm cả phần lẻ đã làm từ ngày hôm trước mang lọt sang)
+                            double totalMinutesWorkedSoFarOnThisSP = (sp.OriginalMinutes - sp.RemainingMinutes) + minutesToUse;
+                            double previousMinutesWorkedOnThisSP = sp.OriginalMinutes - sp.RemainingMinutes;
 
-                        if (actualMinutesUsed > currentSPRemaining)
-                        {
-                            productCount = (int)Math.Ceiling(currentSPRemaining / minPerSP);
-                            actualMinutesUsed = Math.Min(currentSPRemaining, productCount * minPerSP);
-                        }
+                            int totalProductCountSoFar = (int)Math.Floor(totalMinutesWorkedSoFarOnThisSP / sp.MinPerSP);
+                            int previousProductCount = (int)Math.Floor(previousMinutesWorkedOnThisSP / sp.MinPerSP);
 
-                        bool isCompleted = currentSPRemaining <= actualMinutesUsed + 0.01;
-                        double used = Math.Min(minutesToUse, actualMinutesUsed);
+                            // Số lượng SP hoàn thành TRONG ngày hôm nay
+                            int productCountToday = totalProductCountSoFar - previousProductCount;
+                            
+                            // Nếu đây là lần cuối cùng (làm nốt mẩu cuối cùng) thì vét nốt SP nếu lẻ
+                            bool isCompleted = sp.RemainingMinutes <= minutesToUse + 0.01;
+                            if (isCompleted)
+                            {
+                                // Khi vớt nốt mẩu cuối, kiểm tra tổng số lượng đã allocate so với tổng SP cần thiết
+                                int expectedTotalItems = (int)Math.Ceiling(sp.OriginalMinutes / sp.MinPerSP);
+                                if (totalProductCountSoFar < expectedTotalItems)
+                                {
+                                    int shortFall = expectedTotalItems - totalProductCountSoFar;
+                                    productCountToday += shortFall; 
+                                }
+                            }
 
-                        var existing = dailyAlloc.Products.FirstOrDefault(p => p.ProductId == sp.ProductId);
-                        if (existing != null)
-                        {
-                            existing.MinutesUsed += used;
-                            existing.ProductCount += productCount;
-                            existing.IsCompleted = isCompleted;
-                        }
-                        else
-                        {
                             dailyAlloc.Products.Add(new DailyProductAllocation
                             {
                                 ProductId = sp.ProductId,
                                 GroupId = sp.GroupId,
-                                MinutesUsed = used,
-                                ProductCount = productCount,
+                                MinutesUsed = minutesToUse, // Ghi nhận đúng số phút đã cống hiến hôm nay (dù có ra SP hay không)
+                                ProductCount = productCountToday, // Đủ 1 SP mới nảy số, rơi vào ngày nào thì hiện số ở ngày đó
                                 IsCompleted = isCompleted
                             });
-                        }
 
-                        remainingCapacity -= used;
-                        currentSPRemaining -= used;
-
-                        if (currentSPRemaining <= 0.01)
-                        {
-                            currentSPIndex++;
-                            if (currentSPIndex < sequentialSPs.Count)
-                                currentSPRemaining = sequentialSPs[currentSPIndex].RemainingMinutes;
+                            remainingBgCapacity -= minutesToUse;
+                            sp.RemainingMinutes -= minutesToUse;
                         }
                     }
                 }
@@ -441,6 +462,15 @@ namespace KHSX.Services
             }
 
             return result;
+        }
+
+        private class ProductState
+        {
+            public string ProductId { get; set; } = string.Empty;
+            public string GroupId { get; set; } = string.Empty;
+            public double OriginalMinutes { get; set; }
+            public double RemainingMinutes { get; set; }
+            public double MinPerSP { get; set; }
         }
 
         // ─────────────────────────────────────────

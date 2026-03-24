@@ -69,6 +69,7 @@
                 <Button Content="➕ Thêm Line" Command="{Binding AddLineCommand}" Padding="10,5" Margin="0,0,10,0" Background="#4CAF50" Foreground="White"/>
                 <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="10,0"/>
                 <Button Content="⚙️ Thứ tự SP" Command="{Binding ConfigProductOrderCommand}" Padding="10,5" Margin="0,0,10,0" Background="#9C27B0" Foreground="White" ToolTip="Cài đặt thứ tự sản phẩm trong từng block"/>
+                <Button Content="ℹ️ Info BuildGroup" Command="{Binding ShowBuildGroupInfoCommand}" Padding="10,5" Margin="0,0,10,0" Background="#00BCD4" Foreground="White" ToolTip="Xem chi tiết danh sách sản phẩm và số phút còn lại của từng nhóm BuildGroup"/>
                 <Button Content="📥 Export Kế Hoạch" Command="{Binding ExportPlanCommand}" Padding="10,5" Margin="0,0,20,0" Background="#2196F3" Foreground="White" ToolTip="Xuất kế hoạch sản xuất ra file Excel"/>
                 <TextBlock Text="Ngày Bắt Đầu: " VerticalAlignment="Center" FontWeight="Bold"/>
                 <DatePicker SelectedDate="{Binding StartDate, Mode=TwoWay}" Width="150" Margin="5,0"/>

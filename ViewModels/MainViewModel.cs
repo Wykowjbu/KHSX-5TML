@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -908,6 +908,37 @@ namespace KHSX.ViewModels
         }
 
         [RelayCommand]
+        private void ShowBuildGroupInfo()
+        {
+            var openMinutes = JsonStorage.Load<List<OpenMinutesData>>("openMinutes.json") ?? new();
+            var products = JsonStorage.Load<List<ProductData>>("products.json") ?? new();
+
+            var items = new List<Models.BuildGroupInfoItem>();
+            foreach (var om in openMinutes)
+            {
+                if (om.OpenMinutes > 0)
+                {
+                    var prod = products.FirstOrDefault(p => p.ProductId == om.ProductId);
+                    items.Add(new Models.BuildGroupInfoItem
+                    {
+                        GroupId = prod?.GroupId ?? "(không rõ)",
+                        ProductId = om.ProductId,
+                        OpenMinutes = om.OpenMinutes
+                    });
+                }
+            }
+
+            if (items.Count == 0)
+            {
+                MessageBox.Show("Chưa có dữ liệu sản phẩm hoặc không có sản phẩm nào còn phút cần làm. Vui lòng Import MES trước.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var dialog = new Views.BuildGroupInfoDialog(items);
+            dialog.ShowDialog();
+        }
+
+        [RelayCommand]
         private void ExportPlan()
         {
             try
@@ -1507,3 +1538,6 @@ namespace KHSX.ViewModels
         public double ExceedMinutes { get; set; }
     }
 }
+
+
+
