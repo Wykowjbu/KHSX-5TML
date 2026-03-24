@@ -20,7 +20,43 @@ namespace KHSX
             {
                 vm.RequestDeadlineDialog += ShowDeadlineConfigDialog;
                 vm.RequestConfigGroupsDialog += ShowConfigGroupsDialog;
+                vm.RequestProductOrderSettingsDialog += ShowProductOrderSettingsDialog;
+                vm.RequestExportOrderDialog += ShowExportOrderDialog;
             }
+        }
+
+        private void ShowProductOrderSettingsDialog()
+        {
+            var dialog = new Views.ProductOrderSettingsDialog
+            {
+                Owner = this
+            };
+            dialog.ShowDialog();
+        }
+
+        private System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<string>>? ShowExportOrderDialog(
+            System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<string>>? lineBlockData)
+        {
+            if (lineBlockData == null) return null;
+
+            var dialog = new Views.ExportOrderDialog(lineBlockData)
+            {
+                Owner = this
+            };
+
+            if (dialog.ShowDialog() == true && dialog.IsConfirmed)
+            {
+                // Merge: dialog chỉ trả về line có >1 block, cần thêm line có 1 block
+                var result = dialog.ResultBlockOrder ?? new();
+                foreach (var kvp in lineBlockData)
+                {
+                    if (!result.ContainsKey(kvp.Key))
+                        result[kvp.Key] = kvp.Value;
+                }
+                return result;
+            }
+
+            return null; // User hủy
         }
 
         private void ShowConfigGroupsDialog()

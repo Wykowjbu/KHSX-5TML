@@ -1,0 +1,86 @@
+<Window x:Class="KHSX.Views.ProductOrderSettingsDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Cài đặt thứ tự sản phẩm"
+        Width="550" Height="550"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize"
+        MinWidth="400" MinHeight="350"
+        Background="#F5F5F5">
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Title -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,12">
+            <TextBlock Text="⚙️ Thứ tự sản phẩm trong từng BuildGroup"
+                       FontWeight="SemiBold" FontSize="14"/>
+            <TextBlock Text="Sản phẩm ở trên sẽ được làm trước. Thứ tự này áp dụng khi export." 
+                       FontSize="11" Foreground="#666" Margin="0,4,0,0"/>
+        </StackPanel>
+
+        <!-- Blocks with products -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <ItemsControl x:Name="BlocksPanel">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Expander IsExpanded="True" Margin="0,0,0,8">
+                            <Expander.Header>
+                                <TextBlock FontWeight="Bold" FontSize="13">
+                                    <Run Text="BuildGroup: "/>
+                                    <Run Text="{Binding BlockCode, Mode=OneWay}"/>
+                                    <Run Text=" (" Foreground="#888"/>
+                                    <Run Text="{Binding Products.Count, Mode=OneWay}" Foreground="#888"/>
+                                    <Run Text=" SP)" Foreground="#888"/>
+                                </TextBlock>
+                            </Expander.Header>
+                            <Border BorderBrush="#DDD" BorderThickness="1" CornerRadius="4" 
+                                    Padding="8" Background="White" Margin="0,4,0,0">
+                                <ListBox ItemsSource="{Binding Products}" 
+                                         SelectionMode="Single" MinHeight="30"
+                                         Background="Transparent" BorderThickness="0">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="2">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" VerticalAlignment="Center" FontSize="12">
+                                                    <Run Text="{Binding ProductId, Mode=OneWay}"/>
+                                                    <Run Text=" (" Foreground="#888"/>
+                                                    <Run Text="{Binding MinPerSPText, Mode=OneWay}" Foreground="#888"/>
+                                                    <Run Text=")" Foreground="#888"/>
+                                                </TextBlock>
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                                    <Button Content="▲" Width="28" Height="28" Margin="2"
+                                                            Tag="{Binding}" Click="MoveProductUp_Click"
+                                                            ToolTip="Di chuyển lên"/>
+                                                    <Button Content="▼" Width="28" Height="28" Margin="2"
+                                                            Tag="{Binding}" Click="MoveProductDown_Click"
+                                                            ToolTip="Di chuyển xuống"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </Border>
+                        </Expander>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <!-- Buttons -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="Hủy" Width="80" Height="32" Margin="0,0,8,0" Click="Cancel_Click"/>
+            <Button Content="💾 Lưu" Width="100" Height="32" 
+                    FontWeight="SemiBold" Background="#4CAF50" Foreground="White"
+                    Click="Save_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>
