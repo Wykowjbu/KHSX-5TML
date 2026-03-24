@@ -4,6 +4,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:KHSX"
+        xmlns:converters="clr-namespace:KHSX.Converters"
         xmlns:viewmodels="clr-namespace:KHSX.ViewModels"
         xmlns:models="clr-namespace:KHSX.Models"
         xmlns:scm="clr-namespace:System.ComponentModel;assembly=WindowsBase"
@@ -22,14 +23,14 @@
         </CollectionViewSource>
 
         <!-- Define converters FIRST -->
-        <local:BoolToRedBorderConverter x:Key="BoolToRedBorderConverter"/>
-        <local:BoolToBorderThicknessConverter x:Key="BoolToBorderThicknessConverter"/>
-        <local:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
-        <local:WeekendColorConverter x:Key="WeekendColorConverter"/>
-        <local:InverseBoolConverter x:Key="InverseBoolConverter"/>
-        <local:CustomConfigBackgroundConverter x:Key="CustomConfigBackgroundConverter"/>
-        <local:DayCellBackgroundConverter x:Key="DayCellBackgroundConverter"/>
-        <local:PercentageToWidthConverter x:Key="PercentageToWidthConverter"/>
+        <converters:BoolToRedBorderConverter x:Key="BoolToRedBorderConverter"/>
+        <converters:BoolToBorderThicknessConverter x:Key="BoolToBorderThicknessConverter"/>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <converters:WeekendColorConverter x:Key="WeekendColorConverter"/>
+        <converters:InverseBoolConverter x:Key="InverseBoolConverter"/>
+        <converters:CustomConfigBackgroundConverter x:Key="CustomConfigBackgroundConverter"/>
+        <converters:DayCellBackgroundConverter x:Key="DayCellBackgroundConverter"/>
+        <converters:PercentageToWidthConverter x:Key="PercentageToWidthConverter"/>
 
         
         <!-- DataTemplate mặc định cho block trên grid -->
@@ -50,33 +51,45 @@
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="50"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Header -->
-        <Border Grid.Row="0" Background="#f0f0f0" BorderBrush="#ccc" BorderThickness="0,0,0,1">
-            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0">
-                <Button Content="1. Import Marketing" Command="{Binding ImportMarketingCommand}" Padding="10,5" Margin="0,0,10,0"/>
-                <Button Content="2. Thiết Lập Deadline" Command="{Binding ConfigDeadlinesCommand}" Padding="10,5" Margin="0,0,10,0"/>
-                <Button Content="Cấu Hình Groups (Marketing)" Command="{Binding ConfigGroupsCommand}" Padding="10,5" Margin="0,0,10,0" Background="#FF9800" Foreground="White" ToolTip="Đổi tên và thiết lập Group sản xuất mặc định"/>
-                <Button Content="3. Import MES -> Tạo Block" Command="{Binding ImportMESCommand}" Padding="10,5" Margin="0,0,10,0"/>
-                
-                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="10,0"/>
-                <Button Content="Lưu cấu hình" Command="{Binding SaveConfigurationCommand}" Padding="10,5" Margin="0,0,10,0"/>
-                <Button Content="Xoá Toàn Bộ" Command="{Binding ClearAllBlocksCommand}" Padding="10,5" Margin="0,0,10,0" Background="#F44336" Foreground="White" ToolTip="Kéo toàn bộ lịch đã xếp về lại danh sách chưa gán"/>
-                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="10,0"/>
-                <Button Content="➕ Thêm Line" Command="{Binding AddLineCommand}" Padding="10,5" Margin="0,0,10,0" Background="#4CAF50" Foreground="White"/>
-                <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="10,0"/>
-                <Button Content="⚙️ Thứ tự SP" Command="{Binding ConfigProductOrderCommand}" Padding="10,5" Margin="0,0,10,0" Background="#9C27B0" Foreground="White" ToolTip="Cài đặt thứ tự sản phẩm trong từng block"/>
-                <Button Content="📥 Xuất Kế Hoạch" Command="{Binding ExportPlanCommand}" Padding="10,5" Margin="0,0,20,0" Background="#2196F3" Foreground="White" ToolTip="Xuất kế hoạch sản xuất ra file Excel"/>
+        <!-- Menu Bar -->
+        <Menu Grid.Row="0" Background="#f0f0f0" Padding="2">
+            <MenuItem Header="📂 Nhập Dữ Liệu">
+                <MenuItem Header="1. Import Marketing" Command="{Binding ImportMarketingCommand}"/>
+                <MenuItem Header="3. Import MES → Tạo Block" Command="{Binding ImportMESCommand}"/>
+            </MenuItem>
+            <MenuItem Header="⚙️ Cấu Hình">
+                <MenuItem Header="2. Thiết Lập Deadline" Command="{Binding ConfigDeadlinesCommand}"/>
+                <MenuItem Header="Cấu Hình Groups (Marketing)" Command="{Binding ConfigGroupsCommand}"/>
+                <MenuItem Header="Thứ tự SP" Command="{Binding ConfigProductOrderCommand}"/>
+                <Separator/>
+                <MenuItem Header="➕ Thêm Line" Command="{Binding AddLineCommand}"/>
+            </MenuItem>
+            <MenuItem Header="🔧 Hành Động">
+                <MenuItem Header="💾 Lưu cấu hình" Command="{Binding SaveConfigurationCommand}"/>
+                <Separator/>
+                <MenuItem Header="🗑️ Xoá Toàn Bộ" Command="{Binding ClearAllBlocksCommand}"/>
+            </MenuItem>
+        </Menu>
+
+        <!-- Compact Toolbar -->
+        <Border Grid.Row="1" Background="#f8f8f8" BorderBrush="#ddd" BorderThickness="0,0,0,1" Padding="8,4">
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                <Button Content="📥 Xuất Kế Hoạch" Command="{Binding ExportPlanCommand}" 
+                        Padding="12,6" Background="#2196F3" Foreground="White" 
+                        FontWeight="Bold" Margin="0,0,20,0"
+                        ToolTip="Xuất kế hoạch sản xuất ra file Excel"/>
                 <TextBlock Text="Ngày Bắt Đầu: " VerticalAlignment="Center" FontWeight="Bold"/>
                 <DatePicker SelectedDate="{Binding StartDate, Mode=TwoWay}" Width="150" Margin="5,0"/>
             </StackPanel>
         </Border>
 
         <!-- Main Content -->
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="2">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="250" MinWidth="150"/>
                 <ColumnDefinition Width="5"/>

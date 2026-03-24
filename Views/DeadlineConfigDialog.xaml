@@ -1,0 +1,36 @@
+<Window x:Class="KHSX.Views.DeadlineConfigDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Thiết Lập Deadline Cho Group"
+        Width="420" Height="500"
+        MinHeight="250"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize"
+        Background="#F5F5F5">
+
+    <DockPanel Margin="20">
+        <!-- Top info -->
+        <TextBlock DockPanel.Dock="Top" 
+                   Text="Nhập ngày deadline cho từng Production Group. Nếu bỏ trống, hệ thống sẽ sử dụng Deadline Tổng."
+                   TextWrapping="Wrap" Margin="0,0,0,10"/>
+
+        <!-- Button Panel -->
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" 
+                    HorizontalAlignment="Right" Margin="0,10,0,0">
+            <Button Content="Lưu Deadlines" Width="100" Height="30" 
+                    Margin="0,0,10,0" Background="#2196F3" Foreground="White"
+                    Click="Save_Click"/>
+            <Button Content="Hủy" Width="80" Height="30" Click="Cancel_Click"/>
+        </StackPanel>
+
+        <!-- Scrollable Grid Content -->
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <Grid x:Name="ContentGrid">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="1*"/>
+                    <ColumnDefinition Width="2*"/>
+                </Grid.ColumnDefinitions>
+            </Grid>
+        </ScrollViewer>
+    </DockPanel>
+</Window>
