@@ -10,7 +10,7 @@ namespace KHSX.Views
     /// Popup cho phép sắp xếp thứ tự BuildGroup trên mỗi ca trước khi export.
     /// Chỉ hiện những ca có >1 BuildGroup.
     /// </summary>
-    public partial class ExportOrderDialog : Window
+    public partial class ExportOrderDialog : Wpf.Ui.Controls.FluentWindow
     {
         public class BlockItem
         {

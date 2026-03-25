@@ -1,4 +1,4 @@
-<Window x:Class="KHSX.MainWindow"
+<ui:FluentWindow x:Class="KHSX.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -7,10 +7,13 @@
         xmlns:converters="clr-namespace:KHSX.Converters"
         xmlns:viewmodels="clr-namespace:KHSX.ViewModels"
         xmlns:models="clr-namespace:KHSX.Models"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
         xmlns:scm="clr-namespace:System.ComponentModel;assembly=WindowsBase"
         mc:Ignorable="d"
         Title="Hệ thống Lập Kế Hoạch Sản Xuất" Height="768" Width="1366"
-        WindowState="Maximized" Icon="Assets/logo.png">
+        ExtendsContentIntoTitleBar="True"
+        WindowBackdropType="Mica"
+        Icon="Assets/logo.png">
     <Window.DataContext>
         <viewmodels:MainViewModel x:Name="ViewModel"/>
     </Window.DataContext>
@@ -53,17 +56,23 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
+        <Grid Grid.Row="0">
+            <ui:TitleBar Title="Hệ thống Lập Kế Hoạch Sản Xuất" Icon="Assets/logo.png" />
+            <ui:Button Icon="{ui:SymbolIcon WeatherMoon24}" Click="ThemeToggle_Click" Background="Transparent" BorderBrush="Transparent" Margin="0,0,150,0" HorizontalAlignment="Right" VerticalAlignment="Center" Panel.ZIndex="10"/>
+        </Grid>
+
         <!-- Menu Bar -->
-        <Menu Grid.Row="0" Background="#f0f0f0" Padding="2">
+        <Menu Grid.Row="1" Background="Transparent" Padding="2">
             <MenuItem Header="📂 Nhập Dữ Liệu">
-                <MenuItem Header="1. Import Marketing" Command="{Binding ImportMarketingCommand}"/>
-                <MenuItem Header="3. Import MES → Tạo Block" Command="{Binding ImportMESCommand}"/>
+                <MenuItem Header="Import Marketing" Command="{Binding ImportMarketingCommand}"/>
+                <MenuItem Header="Import MES → Tạo Block" Command="{Binding ImportMESCommand}"/>
             </MenuItem>
             <MenuItem Header="⚙️ Cấu Hình">
-                <MenuItem Header="2. Thiết Lập Deadline" Command="{Binding ConfigDeadlinesCommand}"/>
+                <MenuItem Header="Thiết Lập Deadline" Command="{Binding ConfigDeadlinesCommand}"/>
                 <MenuItem Header="Cấu Hình Groups (Marketing)" Command="{Binding ConfigGroupsCommand}"/>
                 <MenuItem Header="Thứ tự SP" Command="{Binding ConfigProductOrderCommand}"/>
                 <Separator/>
@@ -77,19 +86,19 @@
         </Menu>
 
         <!-- Compact Toolbar -->
-        <Border Grid.Row="1" Background="#f8f8f8" BorderBrush="#ddd" BorderThickness="0,0,0,1" Padding="8,4">
+        <Border Grid.Row="2" Background="{DynamicResource ControlFillColorSecondaryBrush}" BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" Padding="8,4">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                <Button Content="📥 Xuất Kế Hoạch" Command="{Binding ExportPlanCommand}" 
-                        Padding="12,6" Background="#2196F3" Foreground="White" 
-                        FontWeight="Bold" Margin="0,0,20,0"
+                <ui:Button Content="📥 Xuất Kế Hoạch" Command="{Binding ExportPlanCommand}" 
+                        Padding="12,6" Appearance="Primary" Margin="0,0,20,0"
                         ToolTip="Xuất kế hoạch sản xuất ra file Excel"/>
                 <TextBlock Text="Ngày Bắt Đầu: " VerticalAlignment="Center" FontWeight="Bold"/>
-                <DatePicker SelectedDate="{Binding StartDate, Mode=TwoWay}" Width="150" Margin="5,0"/>
+                <DatePicker SelectedDate="{Binding StartDate, Mode=TwoWay}" Width="230" Margin="5,0"/>
+                <Border Width="1" Background="#ccc" Margin="10,0"/>
             </StackPanel>
         </Border>
 
         <!-- Main Content -->
-        <Grid Grid.Row="2">
+        <Grid Grid.Row="3">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="250" MinWidth="150"/>
                 <ColumnDefinition Width="5"/>
@@ -139,7 +148,7 @@
             </Border>
 
             <!-- Grid Splitter -->
-            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="#eee"/>
+            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="{DynamicResource ControlFillColorTertiaryBrush}"/>
 
             <!-- Right Panel: Gantt Chart -->
             <ScrollViewer Grid.Column="2" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
@@ -151,8 +160,8 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         
-                        <Border Grid.Column="0" Background="#f0f0f0" BorderBrush="#ccc" BorderThickness="1" Padding="5">
-                            <TextBlock Text="Tổng người/ngày" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="#555"/>
+                        <Border Grid.Column="0" Background="{DynamicResource ControlFillColorSecondaryBrush}" BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}" BorderThickness="1" Padding="5">
+                            <TextBlock Text="Tổng người/ngày" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}"/>
                         </Border>
                         
                         <ItemsControl Grid.Column="1" ItemsSource="{Binding DaySummaries}">
@@ -163,10 +172,10 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="{x:Type models:DaySummary}">
-                                    <Border Width="120" Background="#FFF3E0" BorderBrush="#FFCC80" BorderThickness="1" Padding="0">
+                                    <Border Width="120" Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}" BorderThickness="1" Padding="0">
                                         <TextBlock Text="{Binding DisplayText}" 
                                                    FontWeight="Bold" 
-                                                   Foreground="#E65100" 
+                                                   Foreground="{DynamicResource TextFillColorPrimaryBrush}" 
                                                    HorizontalAlignment="Center" 
                                                    VerticalAlignment="Center"
                                                    FontSize="12"/>
@@ -185,7 +194,7 @@
                                         <Setter Property="Background" Value="Transparent"/>
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding RelativeSource={RelativeSource AncestorType=ContentPresenter}, Path=(ItemsControl.AlternationIndex)}" Value="1">
-                                                <Setter Property="Background" Value="#F2F9FF"/> <!-- Màu nền xen kẽ (xanh lam siêu nhạt) -->
+                                                <Setter Property="Background" Value="{DynamicResource LayerOnLayerFillColorDefaultBrush}"/> <!-- Màu nền xen kẽ (xanh lam siêu nhạt) -->
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
@@ -196,7 +205,7 @@
                                 </Grid.ColumnDefinitions>
 
                                 <!-- Line Name -->
-                                <Border Background="#ddd" BorderBrush="#aaa" BorderThickness="1" Padding="5"
+                                <Border Background="{DynamicResource ControlFillColorSecondaryBrush}" BorderBrush="{DynamicResource SurfaceStrokeColorDefaultBrush}" BorderThickness="1" Padding="5"
                                         Tag="{Binding}">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
@@ -213,8 +222,7 @@
                                                  LostFocus="DisplayIndex_LostFocus" KeyDown="DisplayIndex_KeyDown"
                                                  VerticalAlignment="Stretch" HorizontalAlignment="Stretch"
                                                  HorizontalContentAlignment="Center" VerticalContentAlignment="Center"
-                                                 FontWeight="Bold" FontSize="14" Background="White" Margin="0,0,5,0"
-                                                 BorderBrush="#ccc" BorderThickness="1"
+                                                 FontWeight="Bold" FontSize="14" Margin="0,0,5,0"
                                                  ToolTip="Số thứ tự xếp hạng (Có thể chỉnh sửa tuỳ ý)"/>
                                         
                                         <TextBlock Grid.Column="1" Grid.Row="0" Text="{Binding RowName}" 
@@ -227,11 +235,11 @@
                                                    Cursor="Hand"
                                                    ToolTip="Click để đổi tên và cấu hình ca"/>
                                         
-                                        <Button Grid.Column="1" Grid.Row="1" Content="🗑️" 
+                                        <ui:Button Grid.Column="1" Grid.Row="1" Content="🗑️" 
                                                 Command="{Binding DataContext.RemoveLineCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                 CommandParameter="{Binding}"
                                                 Width="60" Height="25" Margin="0,5,0,0"
-                                                Background="#f44336" Foreground="White"
+                                                Appearance="Danger"
                                                 FontSize="12" Padding="2"
                                                 ToolTip="Xóa Line"/>
                                     </Grid>
@@ -333,4 +341,4 @@
             </ScrollViewer>
         </Grid>
     </Grid>
-</Window>
+</ui:FluentWindow>

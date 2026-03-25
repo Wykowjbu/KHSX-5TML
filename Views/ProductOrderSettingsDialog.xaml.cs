@@ -12,7 +12,7 @@ namespace KHSX.Views
     /// Dialog cài đặt thứ tự SP trong từng block.
     /// Dữ liệu lưu vào productOrderSettings.json.
     /// </summary>
-    public partial class ProductOrderSettingsDialog : Window
+    public partial class ProductOrderSettingsDialog : Wpf.Ui.Controls.FluentWindow
     {
         public class ProductItem
         {

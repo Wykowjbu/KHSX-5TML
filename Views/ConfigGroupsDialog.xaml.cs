@@ -7,7 +7,7 @@ using KHSX.Services;
 
 namespace KHSX.Views
 {
-    public partial class ConfigGroupsDialog : Window
+    public partial class ConfigGroupsDialog : Wpf.Ui.Controls.FluentWindow
     {
         private readonly List<ProductGroupData> _groups;
         private readonly Dictionary<string, TextBox> _nameBoxes = new();

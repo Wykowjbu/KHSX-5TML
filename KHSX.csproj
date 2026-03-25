@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.105.0" />
+    <PackageReference Include="WPF-UI" Version="3.0.4" />
     <Resource Include="Assets\logo.png" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageReference Include="ExcelDataReader" Version="3.8.0" />

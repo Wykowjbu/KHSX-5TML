@@ -1,23 +1,32 @@
-<Window x:Class="KHSX.Views.EditShiftDialog"
+<ui:FluentWindow x:Class="KHSX.Views.EditShiftDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        Title="Chỉnh Sửa Ca"
         Width="450" SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
+        ExtendsContentIntoTitleBar="True"
+        WindowBackdropType="Mica"
         ResizeMode="NoResize"
         Background="#F5F5F5">
-
-    <DockPanel Margin="20">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <ui:TitleBar Grid.Row="0" Title="Chỉnh Sửa Ca" />
+        <DockPanel Grid.Row="1" Margin="20">
         <!-- Button Panel -->
         <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" 
                     HorizontalAlignment="Right" Margin="0,12,0,0">
-            <Button x:Name="ResetButton" Content="Reset về mặc định" Width="120" Height="30" 
+            <Button x:Name="ResetButton" Content="Reset về mặc định" Padding="15,6" MinWidth="120" 
                     Margin="0,0,10,0" Background="#FF9800" Foreground="White"
                     Click="Reset_Click" Visibility="Collapsed"/>
-            <Button x:Name="ApplyAllButton" Content="Áp dụng cho tất cả ngày" Width="140" Height="30" 
+            <Button x:Name="ApplyAllButton" Content="Áp dụng cho tất cả ngày" Padding="15,6" MinWidth="140" 
                     Margin="0,0,10,0" Background="#2196F3" Foreground="White"
                     Click="ApplyAll_Click"/>
-            <Button Content="Lưu" Width="80" Height="30" Margin="0,0,10,0" Click="Save_Click"/>
-            <Button Content="Hủy" Width="80" Height="30" Click="Cancel_Click"/>
+            <Button Content="Lưu" Padding="15,6" MinWidth="80" Margin="0,0,10,0" Click="Save_Click"/>
+            <Button Content="Hủy" Padding="15,6" MinWidth="80" Click="Cancel_Click"/>
         </StackPanel>
 
         <!-- Content -->
@@ -27,10 +36,10 @@
                 <TextBlock Text="CÀI ĐẶT NHANH CHO TẤT CẢ CÁC LINE (CÙNG NGÀY)" 
                            FontWeight="Bold" Padding="5" Background="LightGray"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="10">
-                    <Button Content="🔴 NGHỈ TOÀN BỘ" Width="135" Height="35" 
+                    <Button Content="🔴 NGHỈ TOÀN BỘ" Padding="15,8" MinWidth="135" 
                             Margin="0,0,10,0" Background="Crimson" Foreground="White" 
                             FontWeight="Bold" Click="MassOff_Click"/>
-                    <Button Content="🟢 LÀM TOÀN BỘ" Width="135" Height="35" 
+                    <Button Content="🟢 LÀM TOÀN BỘ" Padding="15,8" MinWidth="135" 
                             Background="ForestGreen" Foreground="White" 
                             FontWeight="Bold" Click="MassWork_Click"/>
                 </StackPanel>
@@ -83,5 +92,6 @@
             </StackPanel>
             <Separator Margin="0,10,0,0"/>
         </StackPanel>
-    </DockPanel>
-</Window>
+        </DockPanel>
+    </Grid>
+</ui:FluentWindow>

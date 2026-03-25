@@ -9,11 +9,12 @@ using KHSX.ViewModels;
 
 namespace KHSX
 {
-    public partial class MainWindow : Window
+    public partial class MainWindow : Wpf.Ui.Controls.FluentWindow
     {
         public MainWindow()
         {
             InitializeComponent();
+            Wpf.Ui.Appearance.SystemThemeWatcher.Watch(this);
             
             if (this.DataContext is MainViewModel vm)
             {
@@ -22,6 +23,16 @@ namespace KHSX
                 vm.RequestProductOrderSettingsDialog += ShowProductOrderSettingsDialog;
                 vm.RequestExportOrderDialog += ShowExportOrderDialog;
             }
+        }
+
+        private void ThemeToggle_Click(object sender, RoutedEventArgs e)
+        {
+            var currentTheme = Wpf.Ui.Appearance.ApplicationThemeManager.GetAppTheme();
+            Wpf.Ui.Appearance.ApplicationThemeManager.Apply(
+                currentTheme == Wpf.Ui.Appearance.ApplicationTheme.Light 
+                    ? Wpf.Ui.Appearance.ApplicationTheme.Dark 
+                    : Wpf.Ui.Appearance.ApplicationTheme.Light
+            );
         }
 
         private void ShowProductOrderSettingsDialog()

@@ -7,7 +7,7 @@ using KHSX.Services;
 
 namespace KHSX.Views
 {
-    public partial class DeadlineConfigDialog : Window
+    public partial class DeadlineConfigDialog : Wpf.Ui.Controls.FluentWindow
     {
         private readonly Dictionary<string, DatePicker> _datePickers = new();
 

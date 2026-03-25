@@ -12,7 +12,7 @@ namespace KHSX.Views
     /// Dialog gộp cho cả cấu hình DayCell (ngày) và cấu hình Line (ca làm việc).
     /// Gọi InitForDayCell() hoặc InitForLine() sau khi tạo.
     /// </summary>
-    public partial class EditShiftDialog : Window
+    public partial class EditShiftDialog : Wpf.Ui.Controls.FluentWindow
     {
         private ShiftConfig _config = null!;
         private DayCell? _dayCell;
