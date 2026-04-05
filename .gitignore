@@ -381,11 +381,8 @@ Data/*.json
 .DS_Store
 
 # ==========================================
-# Superpowers Skills (external dependency)
+# AI Tools & Plugins (local-only, not needed in repo)
 # ==========================================
-# Skills được cài từ https://github.com/obra/superpowers
-# Không cần commit vì có thể cài lại bằng git clone
-.agents/skills/
-
-# Nhưng VẪN commit các file workflow và config tự viết của team
-# ví dụ: .agents/workflows/*.md sẽ được commit bình thường
+.agents/
+.codebuddy/
+.claude/
