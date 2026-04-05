@@ -365,6 +365,7 @@ namespace KHSX.Services
 
         // ─────────────────────────────────────────
         // TÍNH PHÂN BỔ TUẦN TỰ CHO 1 CA (ShiftRow)
+        // Dựa trên blocks THỰC TẾ trên grid, không phải openMinutes toàn cục.
         // ─────────────────────────────────────────
         private List<DailyAllocation> CalculateSequentialAllocationForRow(
             ShiftRow shiftRow,
@@ -378,24 +379,71 @@ namespace KHSX.Services
         {
             var result = new List<DailyAllocation>();
 
+            // Lấy thứ tự BuildGroup và danh sách SP
             var orderedBuildGroups = GetOrderedBuildGroupsForRow(shiftRow, blockOrder);
             var spByGroup = GetProductsByBuildGroup(orderedBuildGroups, products, openMinutes, productOrder);
 
-            // Tạo danh sách SP tuần tự
+            // Tính tổng allocated minutes cho mỗi BuildGroup trên TOÀN BỘ row
+            var totalAllocatedByGroup = new Dictionary<string, double>();
+            foreach (var day in shiftRow.Days)
+            {
+                foreach (var block in day.Blocks)
+                {
+                    if (!totalAllocatedByGroup.ContainsKey(block.Code))
+                        totalAllocatedByGroup[block.Code] = 0;
+                    totalAllocatedByGroup[block.Code] += block.AllocatedMinutes;
+                }
+            }
+
+            // Tạo danh sách SP tuần tự — dùng allocated minutes từ grid, không phải openMinutes
             var sequentialSPs = new List<(string ProductId, string GroupId, double RemainingMinutes, double MinPerSP)>();
             foreach (var bgCode in orderedBuildGroups)
             {
                 if (!spByGroup.TryGetValue(bgCode, out var spList)) continue;
+                if (!totalAllocatedByGroup.TryGetValue(bgCode, out var totalGroupMinutes)) continue;
+                if (totalGroupMinutes <= 0) continue;
+
+                // Tính tổng openMinutes cho SP trong group này (dùng để phân tỷ lệ)
+                double totalOpenInGroup = 0;
+                var spOpenList = new List<(string Id, double Open, double MinPerSP)>();
                 foreach (var spId in spList)
                 {
-                    var prod = products.FirstOrDefault(p => p.ProductId == spId);
                     var om = openMinutes.FirstOrDefault(o => o.ProductId == spId);
-                    if (om == null || om.OpenMinutes <= 0) continue;
+                    var prod = products.FirstOrDefault(p => p.ProductId == spId);
+                    double open = om?.OpenMinutes ?? 0;
                     double minPerSP = prod?.MinutesPerProduct ?? 0;
-                    sequentialSPs.Add((spId, bgCode, om.OpenMinutes, minPerSP));
+                    if (open > 0)
+                    {
+                        spOpenList.Add((spId, open, minPerSP));
+                        totalOpenInGroup += open;
+                    }
+                }
+
+                if (totalOpenInGroup <= 0) continue;
+
+                // Phân bổ allocated minutes theo tỷ lệ openMinutes cho từng SP
+                double distributed = 0;
+                for (int i = 0; i < spOpenList.Count; i++)
+                {
+                    var sp = spOpenList[i];
+                    double spShare;
+                    if (i == spOpenList.Count - 1)
+                    {
+                        // SP cuối nhận phần còn lại (tránh sai số floating point)
+                        spShare = totalGroupMinutes - distributed;
+                    }
+                    else
+                    {
+                        spShare = Math.Round(totalGroupMinutes * (sp.Open / totalOpenInGroup), 2);
+                    }
+                    distributed += spShare;
+
+                    if (spShare > 0)
+                        sequentialSPs.Add((sp.Id, bgCode, spShare, sp.MinPerSP));
                 }
             }
 
+            // Phân bổ SP tuần tự theo capacity thực tế từ blocks trên grid mỗi ngày
             int currentSPIndex = 0;
             double currentSPRemaining = sequentialSPs.Count > 0 ? sequentialSPs[0].RemainingMinutes : 0;
 
@@ -405,20 +453,26 @@ namespace KHSX.Services
                 var dayCell = shiftRow.Days.FirstOrDefault(dc => dc.Date.Date == date.Date);
 
                 bool isDayOff = dayCell == null || dayCell.IsDayOff;
-                double capacity = isDayOff ? 0 : dayCell!.TotalCapacity;
-                double workers = isDayOff ? 0 : dayCell!.Config.Workers;
+                double workers = (!isDayOff && dayCell != null) ? dayCell.Config.Workers : 0;
+
+                // Capacity = tổng AllocatedMinutes của blocks trên grid ngày này (không phải TotalCapacity)
+                double dayBlockMinutes = 0;
+                if (dayCell != null)
+                {
+                    dayBlockMinutes = dayCell.Blocks.Sum(b => b.AllocatedMinutes);
+                }
 
                 var dailyAlloc = new DailyAllocation
                 {
                     Date = date,
                     IsDayOff = isDayOff,
-                    TotalCapacity = capacity,
+                    TotalCapacity = dayBlockMinutes,
                     Workers = workers
                 };
 
-                if (!isDayOff && currentSPIndex < sequentialSPs.Count)
+                if (!isDayOff && dayBlockMinutes > 0.01 && currentSPIndex < sequentialSPs.Count)
                 {
-                    double remainingCapacity = capacity;
+                    double remainingCapacity = dayBlockMinutes;
 
                     while (remainingCapacity > 0.01 && currentSPIndex < sequentialSPs.Count)
                     {
@@ -547,18 +601,46 @@ namespace KHSX.Services
             List<ProductData> products,
             List<OpenMinutesData> openMinutes)
         {
-            var buildGroupCodes = shiftRow.Days
-                .SelectMany(d => d.Blocks.Select(b => b.Code))
-                .Distinct().ToList();
+            // Tính tổng allocated minutes trên grid cho mỗi BuildGroup
+            var totalAllocatedByGroup = new Dictionary<string, double>();
+            foreach (var day in shiftRow.Days)
+            {
+                foreach (var block in day.Blocks)
+                {
+                    if (!totalAllocatedByGroup.ContainsKey(block.Code))
+                        totalAllocatedByGroup[block.Code] = 0;
+                    totalAllocatedByGroup[block.Code] += block.AllocatedMinutes;
+                }
+            }
 
             int totalSP = 0;
-            foreach (var code in buildGroupCodes)
+            foreach (var kvp in totalAllocatedByGroup)
             {
+                var code = kvp.Key;
+                var groupAllocated = kvp.Value;
+                if (groupAllocated <= 0) continue;
+
+                // Tính tổng openMinutes cho SP trong group
+                double totalOpenInGroup = 0;
+                var spList = new List<(string Id, double Open, double MinPerSP)>();
                 foreach (var sp in products.Where(p => p.GroupId == code))
                 {
                     var om = openMinutes.FirstOrDefault(o => o.ProductId == sp.ProductId);
-                    if (om != null && om.OpenMinutes > 0 && sp.MinutesPerProduct > 0)
-                        totalSP += (int)Math.Ceiling(om.OpenMinutes / sp.MinutesPerProduct);
+                    double open = om?.OpenMinutes ?? 0;
+                    if (open > 0 && sp.MinutesPerProduct > 0)
+                    {
+                        spList.Add((sp.ProductId, open, sp.MinutesPerProduct));
+                        totalOpenInGroup += open;
+                    }
+                }
+
+                if (totalOpenInGroup <= 0) continue;
+
+                // Phân bổ allocated minutes theo tỷ lệ và tính SP
+                foreach (var sp in spList)
+                {
+                    double spShare = groupAllocated * (sp.Open / totalOpenInGroup);
+                    totalSP += (int)Math.Ceiling(spShare / sp.MinPerSP);
                 }
             }
             return totalSP;
