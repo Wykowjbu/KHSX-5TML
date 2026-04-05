@@ -565,7 +565,14 @@ namespace KHSX
                     row.RowName = nameBox.Text;
                     row.ApplyDefaultShiftToAllDays();
                     var vm = this.DataContext as MainViewModel;
-                    vm?.SaveConfigurationCommand.Execute(null);
+                    if (vm != null)
+                    {
+                        vm.RepackRowBlocks(row);
+                        var siblingRow = vm.Rows.FirstOrDefault(r => r != row && r.ParentLineName == row.ParentLineName);
+                        if (siblingRow != null)
+                            vm.RepackRowBlocks(siblingRow);
+                        vm.SaveConfigurationCommand.Execute(null);
+                    }
                     MessageBox.Show($"Đã áp dụng cấu hình cho tất cả ngày trong {row.RowName}", "Thành công", MessageBoxButton.OK, MessageBoxImage.Information);
                     dialog.DialogResult = true;
                 }
@@ -638,13 +645,27 @@ namespace KHSX
             {
                 row.ApplyDefaultShiftToAllDays();
                 var vm = this.DataContext as MainViewModel;
-                vm?.SaveConfigurationCommand.Execute(null);
+                if (vm != null)
+                {
+                    vm.RepackRowBlocks(row);
+                    var siblingRow = vm.Rows.FirstOrDefault(r => r != row && r.ParentLineName == row.ParentLineName);
+                    if (siblingRow != null)
+                        vm.RepackRowBlocks(siblingRow);
+                    vm.SaveConfigurationCommand.Execute(null);
+                }
                 MessageBox.Show($"Đã áp dụng cấu hình cho tất cả ngày trong {row.RowName}", "Thành công", MessageBoxButton.OK, MessageBoxImage.Information);
             };
             saveButton.Click += (s, e) =>
             {
                 var vm = this.DataContext as MainViewModel;
-                vm?.SaveConfigurationCommand.Execute(null);
+                if (vm != null)
+                {
+                    vm.RepackRowBlocks(row);
+                    var siblingRow = vm.Rows.FirstOrDefault(r => r != row && r.ParentLineName == row.ParentLineName);
+                    if (siblingRow != null)
+                        vm.RepackRowBlocks(siblingRow);
+                    vm.SaveConfigurationCommand.Execute(null);
+                }
                 dialog.DialogResult = true;
             };
             cancelButton.Click += (s, e) => dialog.DialogResult = false;
