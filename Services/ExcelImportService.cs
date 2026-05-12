@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using ExcelDataReader;
 using KHSX.Models;
 
@@ -10,348 +12,579 @@ namespace KHSX.Services
 {
     public class ExcelImportService
     {
+        private const string ModuleMappingsFile = "moduleMappings.json";
+        private const string PlanningBlocksFile = "planningBlocks.json";
+        private const string OpenMinutesFile = "openMinutes.json";
+        private const string BuildGroupSettingsFile = "buildGroupSettings.json";
+
         public ExcelImportService()
         {
-            // Cần thiết để ExcelDataReader hoạt động tốt với các encoding của Excel
             System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
         }
 
-        // --- BƯỚC 1: IMPORT MARKETING ---
-        // Marketing có chứa các group Gr.xxx
-        // Cập nhật settings "currentMESGroup" nếu tìm thấy group mới nhất
-        public void ImportMarketing(string filePath, string sheetName = "Sheet1")
+        public ImportResult ImportModuleList(string filePath)
         {
+            var result = new ImportResult();
+
             try
             {
-                using var stream = File.Open(filePath, FileMode.Open, FileAccess.Read);
-                using var reader = ExcelReaderFactory.CreateReader(stream);
-                var dataSet = reader.AsDataSet(new ExcelDataSetConfiguration()
-                {
-                    ConfigureDataTable = (_) => new ExcelDataTableConfiguration() { UseHeaderRow = true }
-                });
-
-                var table = dataSet.Tables.Contains(sheetName) ? dataSet.Tables[sheetName] : dataSet.Tables[0];
-                
-                int codeColIdx = -1;  // Tên sp (A)
-                int groupColIdx = -1; // Nhóm sp (K)
-                int minColIdx = -1;   // Số phút / sp (L)
-                int funcColIdx = -1;  // Function (M)
-                var grColIndices = new Dictionary<int, string>(); // Cột chứa Gr.xxx
-
-                // 1. Quét tên cột từ Configured DataTable (dòng đầu tiên có thể làm Header)
-                for (int i = 0; i < table.Columns.Count; i++)
-                {
-                    var colName = table.Columns[i]?.ColumnName?.Trim()?.ToLower() ?? "";
-                    var originalName = table.Columns[i]?.ColumnName?.Trim() ?? "";
-
-                    if (colName.Contains("mã") || colName.Contains("code") || colName.Contains("tên sp")) codeColIdx = i;
-                    else if (colName.Contains("nhóm") || colName.Contains("group")) groupColIdx = i;
-                    else if (colName.Contains("phút") || colName.Contains("minute") || colName.Contains("min")) minColIdx = i;
-                    else if (colName.Contains("function")) funcColIdx = i;
-                    else 
-                    {
-                        var match = System.Text.RegularExpressions.Regex.Match(originalName, @"^Gr[\.\s]*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                        if (match.Success)
-                        {
-                            grColIndices[i] = $"Gr.{match.Groups[1].Value}";
-                        }
-                    }
-                }
-
-                // 2. Quét thêm từ 2 dòng đầu tiên vì Excel thường có Merge Cell làm sai Header
-                for (int r = 0; r < Math.Min(2, table.Rows.Count); r++)
-                {
-                    for (int c = 0; c < table.Columns.Count; c++)
-                    {
-                        var cellVal = table.Rows[r][c]?.ToString()?.Trim() ?? "";
-                        var match = System.Text.RegularExpressions.Regex.Match(cellVal, @"^Gr[\.\s]*(\d+)", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                        if (match.Success && !grColIndices.ContainsKey(c))
-                        {
-                            grColIndices[c] = $"Gr.{match.Groups[1].Value}";
-                        }
-                    }
-                }
-
-                // Fallbacks dựa trên vị trí cột mặc định
-                if (codeColIdx == -1) codeColIdx = 0; // A
-                if (groupColIdx == -1) groupColIdx = 10; // K
-                if (funcColIdx == -1) funcColIdx = 11; // L (Tên Function)
-                if (minColIdx == -1) minColIdx = 12; // M (Số phút)
-
-                // Tải dữ liệu cũ để Merge
-                var oldProducts = JsonStorage.Load<List<ProductData>>("products.json") ?? new List<ProductData>();
-                var oldGroupsMap = JsonStorage.Load<List<ProductGroupData>>("productGroups.json") ?? new List<ProductGroupData>();
-                var groupsMap = oldGroupsMap.ToDictionary(g => g.GroupId, g => g);
-
-                var productDict = oldProducts.ToDictionary(p => p.ProductId, p => p);
+                var table = ReadFirstTable(filePath, useHeaderRow: false);
+                var existing = JsonStorage.Load<List<ModuleMappingData>>(ModuleMappingsFile);
+                var map = existing
+                    .Where(m => !string.IsNullOrWhiteSpace(m.FP))
+                    .GroupBy(m => NormalizeKey(m.FP))
+                    .ToDictionary(g => g.Key, g => g.Last());
 
                 for (int r = 0; r < table.Rows.Count; r++)
                 {
                     var row = table.Rows[r];
-                    if (row.ItemArray.Length <= Math.Max(codeColIdx, groupColIdx)) continue;
+                    var functionName = GetCell(row, 0);
+                    var buildGroup = GetCell(row, 1);
+                    var fp = GetCell(row, 2);
 
-                    var codeStr = row[codeColIdx]?.ToString()?.Trim() ?? "";
-                    var groupStr = row[groupColIdx]?.ToString()?.Trim() ?? "";
-
-                    if (string.IsNullOrEmpty(codeStr) || string.IsNullOrEmpty(groupStr)) continue;
-
-                    if (!productDict.TryGetValue(codeStr, out var currentProduct))
+                    if (IsHeaderRow(functionName, buildGroup, fp)) continue;
+                    if (string.IsNullOrWhiteSpace(functionName) ||
+                        string.IsNullOrWhiteSpace(buildGroup) ||
+                        string.IsNullOrWhiteSpace(fp))
                     {
-                        currentProduct = new ProductData
-                        {
-                            ProductId = codeStr,
-                            GroupId = groupStr,
-                            QuantitiesByGroup = new Dictionary<string, double>()
-                        };
-                        productDict[codeStr] = currentProduct;
+                        continue;
                     }
 
-                    double minVal = 18; 
-                    if (minColIdx != -1 && row.ItemArray.Length > minColIdx)
+                    var normalizedFp = NormalizeKey(fp);
+                    map[normalizedFp] = new ModuleMappingData
                     {
-                        var minObj = row[minColIdx];
-                        double.TryParse(minObj?.ToString(), out minVal);
-                        currentProduct.MinutesPerProduct = minVal;
-                    }
-
-                    string funcStr = "";
-                    if (funcColIdx != -1 && row.ItemArray.Length > funcColIdx)
-                    {
-                        funcStr = row[funcColIdx]?.ToString()?.Trim() ?? "";
-                        currentProduct.Function = funcStr;
-                    }
-
-                    // Đọc và cập nhật số lượng theo từng Gr.xxx
-                    foreach (var kvp in grColIndices)
-                    {
-                        if (row.ItemArray.Length > kvp.Key)
-                        {
-                            var cellVal = row[kvp.Key]?.ToString()?.Trim() ?? "";
-                            if (double.TryParse(cellVal, out double qty) && qty > 0)
-                            {
-                                currentProduct.QuantitiesByGroup[kvp.Value] = qty;
-                                
-                                // Cập nhật tên function vào ProductGroup
-                                if (!groupsMap.ContainsKey(groupStr))
-                                {
-                                    groupsMap[groupStr] = new ProductGroupData { GroupId = groupStr, Name = !string.IsNullOrEmpty(funcStr) ? funcStr : groupStr, ProductionGroup = kvp.Value };
-                                }
-                                else if (!string.IsNullOrEmpty(funcStr))
-                                {
-                                    // Luôn cập nhật tên mới nhất từ file Excel
-                                    groupsMap[groupStr].Name = funcStr;
-                                }
-                            }
-                        }
-                    }
-
-                    // Cập nhật Total
-                    currentProduct.TotalQuantity = currentProduct.QuantitiesByGroup.Values.Sum();
-
-                    // Cập nhật lại Gr.xxx lớn nhất cho sản phẩm
-                    if (currentProduct.QuantitiesByGroup.Any())
-                    {
-                        currentProduct.ProductionGroup = currentProduct.QuantitiesByGroup.Keys.OrderByDescending(k => k).First();
-                    }
+                        FP = normalizedFp,
+                        BuildGroup = NormalizeKey(buildGroup),
+                        FunctionName = functionName.Trim(),
+                        IsManual = false
+                    };
+                    result.ImportedCount++;
                 }
 
-                JsonStorage.Save("products.json", productDict.Values.ToList());
-                JsonStorage.Save("productGroups.json", groupsMap.Values.ToList());
-            }
-            catch (Exception ex)
-            {
-                throw new Exception($"Lỗi khi import file Marketing: {ex.Message}");
-            }
-        }
+                var warnings = GetBuildGroupFunctionWarnings(map.Values);
+                result.Warnings.AddRange(warnings);
 
-        // --- BƯỚC 3: IMPORT MES ---
-        // File chứa số phút còn lại của từng mã sản phẩm
-        public void ImportMES(string filePath)
-        {
-            try
-            {
-                using var stream = File.Open(filePath, FileMode.Open, FileAccess.Read);
-                using var reader = ExcelReaderFactory.CreateReader(stream);
-                var dataSet = reader.AsDataSet(new ExcelDataSetConfiguration()
-                {
-                    // Tắt tự động lấy dòng đầu làm header vì header ở tít dòng 18
-                    ConfigureDataTable = (_) => new ExcelDataTableConfiguration() { UseHeaderRow = false } 
-                });
-
-                // Lấy sheet đầu tiên
-                var table = dataSet.Tables.Count > 0 ? dataSet.Tables[0] : null;
-                if (table == null) throw new Exception("File Excel không có dữ liệu.");
-
-                int codeColIdx = -1;
-                int minColIdx = -1;
-                int headerRowIdx = -1;
-
-                // Tìm dòng tiêu đề chứa "ORD_PRODUCTNR" và "OPEN_MIN"
-                for (int r = 0; r < table.Rows.Count; r++)
-                {
-                    for (int c = 0; c < table.Columns.Count; c++)
-                    {
-                        var cellValue = table.Rows[r][c]?.ToString()?.Trim().ToUpper() ?? "";
-                        if (cellValue.Contains("ORD_PRODUCTNR") || cellValue.Contains("PRODUCTNR"))
-                            codeColIdx = c;
-                        if (cellValue.Contains("OPEN_MIN"))
-                            minColIdx = c;
-                    }
-
-                    if (codeColIdx != -1 && minColIdx != -1)
-                    {
-                        headerRowIdx = r;
-                        break;
-                    }
-                }
-
-                // Fallback theo cấu trúc user cung cấp: D (3) cho Sản phẩm, I (8) cho Số phút, Data từ dòng 20 (index 19)
-                if (codeColIdx == -1 || minColIdx == -1)
-                {
-                    codeColIdx = 3; // D
-                    minColIdx = 8;  // I
-                    headerRowIdx = 18; // Dòng 19 (index 18) là header. Dòng 20 (index 19) là TOTAL.
-                }
-
-                var openMins = new List<OpenMinutesData>();
-
-                // Data bắt đầu dòng tiếp theo của Header
-                int startRow = headerRowIdx + 1;
-
-                for (int r = startRow; r < table.Rows.Count; r++)
-                {
-                    var row = table.Rows[r];
-                    if (row.ItemArray.Length <= Math.Max(codeColIdx, minColIdx)) continue;
-
-                    var codeStr = row[codeColIdx]?.ToString()?.Trim() ?? "";
-                    
-                    // Bỏ qua dòng trống hoặc dòng có chữ TOTAL
-                    if (string.IsNullOrEmpty(codeStr) || codeStr.Equals("TOTAL", StringComparison.OrdinalIgnoreCase)) continue;
-
-                    double minVal = 0;
-                    var minObj = row[minColIdx];
-                    if (minObj is double d) minVal = d;
-                    else double.TryParse(minObj?.ToString()?.Replace(",", ""), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out minVal);
-
-                    if (minVal > 0)
-                    {
-                        openMins.Add(new OpenMinutesData
-                        {
-                            ProductId = codeStr,
-                            OpenMinutes = Math.Round(minVal, 2)
-                        });
-                    }
-                }
-
-                // Gom nhóm theo ProductId: cộng dồn OpenMinutes cho các dòng có cùng mã sản phẩm
-                var mergedMins = openMins
-                    .GroupBy(o => o.ProductId)
-                    .Select(g => new OpenMinutesData
-                    {
-                        ProductId = g.Key,
-                        OpenMinutes = Math.Round(g.Sum(o => o.OpenMinutes), 2)
-                    })
+                var mappings = map.Values
+                    .OrderBy(m => m.BuildGroup)
+                    .ThenBy(m => m.FP)
                     .ToList();
 
-                JsonStorage.Save("openMinutes.json", mergedMins);
+                JsonStorage.Save(ModuleMappingsFile, mappings);
+                EnsureBuildGroupSettings(mappings);
+                SyncLegacyProductGroups(mappings);
             }
             catch (Exception ex)
             {
-                throw new Exception($"Lỗi khi import file MES: {ex.Message}");
-            }
-        }
-
-        // --- BƯỚC 4 & 5: GOM NHÓM & TẠO BLOCK ---
-        // Xảy ra sau khi import xong MES
-        public List<ProductBlock> GenerateBlocksFromData()
-        {
-            var result = new List<ProductBlock>();
-            var products = JsonStorage.Load<List<ProductData>>("products.json");
-            var openMins = JsonStorage.Load<List<OpenMinutesData>>("openMinutes.json");
-            var deadlines = JsonStorage.Load<List<DeadlineData>>("deadlines.json");
-            var settings = JsonStorage.Load<SettingsData>("settings.json") ?? new SettingsData();
-
-            if (products == null || openMins == null) return result;
-
-            // Dictionary: GroupId -> TotalMinutes
-            var groupMinutes = new Dictionary<string, double>();
-
-            foreach (var om in openMins)
-            {
-                // Tìm GroupId của ProductId này
-                var prod = products.FirstOrDefault(p => p.ProductId == om.ProductId);
-                if (prod != null)
-                {
-                    string groupId = prod.GroupId;
-                    
-                    // CHỈ gom nhóm cho currentMESGroup nếu setting có yêu cầu.
-                    // Tuy nhiên tài liệu bảo "không cần quan tâm Gr quá khứ", nên logic linh động là có nhóm nào tạo block nhóm đó.
-                    // ViewModel sẽ tuỳ biến hiển thị cảnh báo sau.
-                    
-                    if (!groupMinutes.ContainsKey(groupId))
-                        groupMinutes[groupId] = 0;
-                        
-                    groupMinutes[groupId] += om.OpenMinutes;
-                }
-            }
-
-            Random rng = new Random();
-            int sourceIndex = 1;
-
-            // Lấy GroupId map cho ProductionGroup
-            var productGroups = JsonStorage.Load<List<ProductGroupData>>("productGroups.json") ?? new List<ProductGroupData>();
-
-            foreach (var kvp in groupMinutes)
-            {
-                string groupId = kvp.Key;
-                double totalMin = kvp.Value;
-
-                if (totalMin > 0)
-                {
-                    byte r = (byte)rng.Next(150, 256);
-                    byte g = (byte)rng.Next(150, 256);
-                    byte b = (byte)rng.Next(150, 256);
-
-                    string productionGroup = "";
-                    var matchingGroup = productGroups.FirstOrDefault(pg => pg.GroupId == groupId);
-                    if (matchingGroup != null && !string.IsNullOrEmpty(matchingGroup.ProductionGroup))
-                    {
-                        // Lấy từ user assignment
-                        productionGroup = matchingGroup.ProductionGroup;
-                    }
-                    else
-                    {
-                        // Tính toán fallback từ file product
-                        var matchingProducts = products.Where(p => p.GroupId == groupId && !string.IsNullOrEmpty(p.ProductionGroup)).ToList();
-                        if (matchingProducts.Any())
-                        {
-                            productionGroup = matchingProducts.OrderByDescending(p => p.ProductionGroup).First().ProductionGroup;
-                        }
-                    }
-
-                    // Tìm deadline của group này nếu có set (Deadline thiết lập theo ProductionGroup Gr.xxx)
-                    DateTime groupDeadline = DateTime.Today.AddDays(7); // default fallback
-                    var dl = deadlines?.FirstOrDefault(d => d.GroupNumber == productionGroup);
-                    if (dl != null)
-                    {
-                        groupDeadline = dl.Deadline.Date;
-                    }
-
-                    result.Add(new ProductBlock
-                    {
-                        SourceId = $"S{sourceIndex++:0000}",
-                        Code = groupId, // Code hiển thị trên UI chính là GroupId (ProductGroup)
-                        ProductionGroup = productionGroup, // Thêm ID sản xuất (Gr.xxx) để kiểm tra deadline
-                        FunctionName = matchingGroup?.Name ?? string.Empty, // Tên fuction đã cấu hình trong Groups
-                        TotalMinutesRequired = Math.Round(totalMin, 2),
-                        AllocatedMinutes = Math.Round(totalMin, 2),
-                        DisplayColor = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(r, g, b))
-                    });
-                }
+                throw new Exception($"Lỗi khi import file Module List: {ex.Message}");
             }
 
             return result;
         }
+
+        public ImportResult ImportPlanning(string filePath)
+        {
+            var result = new ImportResult();
+
+            try
+            {
+                var table = ReadTable(filePath, "Serienplaning", useHeaderRow: false);
+                var mappings = LoadMappingDictionary();
+                var grouped = new Dictionary<(string BuildGroup, string ProductionGroup), PlanningBlockData>();
+                var missingFps = new HashSet<string>();
+
+                var grColumns = FindPlanningGrColumns(table);
+                if (grColumns.Count == 0)
+                    throw new Exception("Không tìm thấy header Gr.xxx trong các cột H-L.");
+
+                int startRow = FindPlanningHeaderRow(table, grColumns.Keys) + 1;
+
+                for (int r = startRow; r < table.Rows.Count; r++)
+                {
+                    var row = table.Rows[r];
+                    if (!IsU4(GetCell(row, 0))) continue;
+
+                    var productId = GetCell(row, 2);
+                    if (string.IsNullOrWhiteSpace(productId)) continue;
+
+                    var total = ParseDouble(GetCell(row, 12));
+                    if (total <= 0) continue;
+
+                    var minutesPerProduct = ParseDouble(GetCell(row, 20)) / 1000.0;
+                    if (minutesPerProduct <= 0) continue;
+
+                    if (!TryResolveMapping(productId, mappings, out var mapping, out var fp))
+                    {
+                        if (!string.IsNullOrWhiteSpace(fp)) missingFps.Add(fp);
+                        continue;
+                    }
+
+                    foreach (var kvp in grColumns)
+                    {
+                        var qty = ParseDouble(GetCell(row, kvp.Key));
+                        if (qty <= 0) continue;
+
+                        var key = (mapping.BuildGroup, kvp.Value);
+                        if (!grouped.TryGetValue(key, out var block))
+                        {
+                            block = new PlanningBlockData
+                            {
+                                BuildGroup = mapping.BuildGroup,
+                                ProductionGroup = kvp.Value,
+                                FunctionName = mapping.FunctionName
+                            };
+                            grouped[key] = block;
+                        }
+
+                        block.PlannedMinutes = Math.Round(block.PlannedMinutes + qty * minutesPerProduct, 2);
+                    }
+                }
+
+                result.MissingFps = missingFps.OrderBy(x => x).ToList();
+                if (result.HasMissingFps) return result;
+
+                var blocks = grouped.Values
+                    .Where(b => b.PlannedMinutes > 0)
+                    .OrderBy(b => b.BuildGroup)
+                    .ThenBy(b => b.ProductionGroup)
+                    .ToList();
+
+                result.ImportedCount = blocks.Count;
+                JsonStorage.Save(PlanningBlocksFile, blocks);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Lỗi khi import file Planning: {ex.Message}");
+            }
+
+            return result;
+        }
+
+        public ImportResult ImportMES(string filePath)
+        {
+            var result = new ImportResult();
+
+            try
+            {
+                var table = ReadFirstTable(filePath, useHeaderRow: false);
+                var mappings = LoadMappingDictionary();
+                var grouped = new Dictionary<(string BuildGroup, string ProductionGroup), OpenMinutesBlockData>();
+                var missingFps = new HashSet<string>();
+
+                for (int r = 0; r < table.Rows.Count; r++)
+                {
+                    var row = table.Rows[r];
+                    if (!IsU4(GetCell(row, 1))) continue;
+
+                    var productionGroup = NormalizeProductionGroup(GetCell(row, 2));
+                    var productId = GetCell(row, 3);
+                    var openMinutes = ParseDouble(GetCell(row, 8));
+
+                    if (string.IsNullOrWhiteSpace(productionGroup) ||
+                        string.IsNullOrWhiteSpace(productId) ||
+                        openMinutes <= 0)
+                    {
+                        continue;
+                    }
+
+                    if (!TryResolveMapping(productId, mappings, out var mapping, out var fp))
+                    {
+                        if (!string.IsNullOrWhiteSpace(fp)) missingFps.Add(fp);
+                        continue;
+                    }
+
+                    var key = (mapping.BuildGroup, productionGroup);
+                    if (!grouped.TryGetValue(key, out var block))
+                    {
+                        block = new OpenMinutesBlockData
+                        {
+                            BuildGroup = mapping.BuildGroup,
+                            ProductionGroup = productionGroup,
+                            FunctionName = mapping.FunctionName
+                        };
+                        grouped[key] = block;
+                    }
+
+                    block.OpenMinutes = Math.Round(block.OpenMinutes + openMinutes, 2);
+                }
+
+                result.MissingFps = missingFps.OrderBy(x => x).ToList();
+                if (result.HasMissingFps) return result;
+
+                var blocks = grouped.Values
+                    .Where(b => b.OpenMinutes > 0)
+                    .OrderBy(b => b.BuildGroup)
+                    .ThenBy(b => b.ProductionGroup)
+                    .ToList();
+
+                result.ImportedCount = blocks.Count;
+                JsonStorage.Save(OpenMinutesFile, blocks);
+            }
+            catch (Exception ex)
+            {
+                throw new Exception($"Lỗi khi import file MES/OpenMin: {ex.Message}");
+            }
+
+            return result;
+        }
+
+        public BlockGenerationResult GenerateBlocksFromDataV2()
+        {
+            var result = new BlockGenerationResult();
+            var planning = JsonStorage.Load<List<PlanningBlockData>>(PlanningBlocksFile);
+            var openMinutes = JsonStorage.Load<List<OpenMinutesBlockData>>(OpenMinutesFile);
+            var deadlines = JsonStorage.Load<List<DeadlineData>>("deadlines.json");
+
+            var planningMap = planning
+                .Where(b => IsValidProductionGroup(b.ProductionGroup))
+                .ToDictionary(
+                b => (NormalizeKey(b.BuildGroup), NormalizeProductionGroup(b.ProductionGroup)),
+                b => b);
+            var openMap = openMinutes
+                .Where(b => IsValidProductionGroup(b.ProductionGroup))
+                .ToDictionary(
+                b => (NormalizeKey(b.BuildGroup), NormalizeProductionGroup(b.ProductionGroup)),
+                b => b);
+
+            var allKeys = planningMap.Keys.Concat(openMap.Keys)
+                .Distinct()
+                .OrderBy(k => k.Item1)
+                .ThenBy(k => k.Item2)
+                .ToList();
+
+            int sourceIndex = 1;
+            foreach (var key in allKeys)
+            {
+                var hasOpen = openMap.TryGetValue(key, out var open);
+                var hasPlanning = planningMap.TryGetValue(key, out var planned);
+
+                var minutes = hasOpen ? open!.OpenMinutes : planned?.PlannedMinutes ?? 0;
+                if (minutes <= 0) continue;
+
+                if (hasOpen && !hasPlanning)
+                {
+                    result.Warnings.Add($"MES/OpenMin có {key.Item1} - {key.Item2} nhưng Planning không có. Vẫn tạo block theo MES.");
+                }
+
+                var functionName = hasOpen
+                    ? open!.FunctionName
+                    : planned?.FunctionName ?? string.Empty;
+
+                result.Blocks.Add(new ProductBlock
+                {
+                    SourceId = $"S{sourceIndex++:0000}",
+                    Code = key.Item1,
+                    ProductionGroup = key.Item2,
+                    FunctionName = functionName,
+                    TotalMinutesRequired = Math.Round(minutes, 2),
+                    AllocatedMinutes = Math.Round(minutes, 2),
+                    DisplayColor = CreateColorForKey(key.Item1, key.Item2)
+                });
+            }
+
+            var configuredDeadlines = deadlines
+                .Select(d => NormalizeProductionGroup(d.GroupNumber))
+                .Where(g => !string.IsNullOrWhiteSpace(g))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            result.MissingDeadlineGroups = result.Blocks
+                .Select(b => NormalizeProductionGroup(b.ProductionGroup))
+                .Where(g => !configuredDeadlines.Contains(g))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(g => g)
+                .ToList();
+
+            return result;
+        }
+
+        public List<string> GetRequiredProductionGroups()
+        {
+            var planning = JsonStorage.Load<List<PlanningBlockData>>(PlanningBlocksFile)
+                .Select(b => b.ProductionGroup);
+            var openMinutes = JsonStorage.Load<List<OpenMinutesBlockData>>(OpenMinutesFile)
+                .Select(b => b.ProductionGroup);
+
+            return planning.Concat(openMinutes)
+                .Select(NormalizeProductionGroup)
+                .Where(g => !string.IsNullOrWhiteSpace(g))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(g => g)
+                .ToList();
+        }
+
+        public List<ModuleMappingData> SaveManualMappings(IEnumerable<ModuleMappingData> mappings)
+        {
+            var existing = JsonStorage.Load<List<ModuleMappingData>>(ModuleMappingsFile);
+            var map = existing
+                .Where(m => !string.IsNullOrWhiteSpace(m.FP))
+                .GroupBy(m => NormalizeKey(m.FP))
+                .ToDictionary(g => g.Key, g => g.Last());
+
+            foreach (var mapping in mappings)
+            {
+                var fp = NormalizeKey(mapping.FP);
+                if (string.IsNullOrWhiteSpace(fp)) continue;
+
+                map[fp] = new ModuleMappingData
+                {
+                    FP = fp,
+                    BuildGroup = NormalizeKey(mapping.BuildGroup),
+                    FunctionName = mapping.FunctionName.Trim(),
+                    IsManual = true
+                };
+            }
+
+            var saved = map.Values
+                .OrderBy(m => m.BuildGroup)
+                .ThenBy(m => m.FP)
+                .ToList();
+            JsonStorage.Save(ModuleMappingsFile, saved);
+            EnsureBuildGroupSettings(saved);
+            SyncLegacyProductGroups(saved);
+            return saved;
+        }
+
+        // Backward-compatible wrapper for old command names while the UI is migrated.
+        public void ImportMarketing(string filePath, string sheetName = "Sheet1")
+        {
+            ImportPlanning(filePath);
+        }
+
+        public List<ProductBlock> GenerateBlocksFromData()
+        {
+            return GenerateBlocksFromDataV2().Blocks;
+        }
+
+        private static DataTable ReadFirstTable(string filePath, bool useHeaderRow)
+        {
+            using var stream = File.Open(filePath, FileMode.Open, FileAccess.Read);
+            using var reader = ExcelReaderFactory.CreateReader(stream);
+            var dataSet = reader.AsDataSet(new ExcelDataSetConfiguration
+            {
+                ConfigureDataTable = (_) => new ExcelDataTableConfiguration { UseHeaderRow = useHeaderRow }
+            });
+
+            return dataSet.Tables.Count > 0
+                ? dataSet.Tables[0]
+                : throw new Exception("File Excel không có dữ liệu.");
+        }
+
+        private static DataTable ReadTable(string filePath, string sheetName, bool useHeaderRow)
+        {
+            using var stream = File.Open(filePath, FileMode.Open, FileAccess.Read);
+            using var reader = ExcelReaderFactory.CreateReader(stream);
+            var dataSet = reader.AsDataSet(new ExcelDataSetConfiguration
+            {
+                ConfigureDataTable = (_) => new ExcelDataTableConfiguration { UseHeaderRow = useHeaderRow }
+            });
+
+            if (!dataSet.Tables.Contains(sheetName))
+                throw new Exception($"Không tìm thấy sheet '{sheetName}'.");
+
+            return dataSet.Tables[sheetName]!;
+        }
+
+        private Dictionary<string, ModuleMappingData> LoadMappingDictionary()
+        {
+            var mappings = JsonStorage.Load<List<ModuleMappingData>>(ModuleMappingsFile);
+            if (mappings.Count == 0)
+                throw new Exception("Chưa import Module List. Hãy import module_list.xlsx trước.");
+
+            return mappings
+                .Where(m => !string.IsNullOrWhiteSpace(m.FP))
+                .GroupBy(m => NormalizeKey(m.FP))
+                .ToDictionary(g => g.Key, g => g.Last());
+        }
+
+        private static bool TryResolveMapping(
+            string productId,
+            Dictionary<string, ModuleMappingData> mappings,
+            out ModuleMappingData mapping,
+            out string fp)
+        {
+            mapping = new ModuleMappingData();
+            fp = ExtractFp(productId);
+            if (string.IsNullOrWhiteSpace(fp)) return false;
+            return mappings.TryGetValue(fp, out mapping!);
+        }
+
+        private static string ExtractFp(string productId)
+        {
+            var normalized = NormalizeKey(productId);
+            return normalized.Length >= 7 ? normalized[..7] : string.Empty;
+        }
+
+        private static Dictionary<int, string> FindPlanningGrColumns(DataTable table)
+        {
+            var result = new Dictionary<int, string>();
+            for (int r = 0; r < Math.Min(10, table.Rows.Count); r++)
+            {
+                var foundGroupRange = false;
+                for (int c = 7; c < table.Columns.Count; c++)
+                {
+                    if (!TryNormalizeStrictProductionGroup(GetCell(table.Rows[r], c), out var group))
+                    {
+                        if (foundGroupRange) break;
+                        continue;
+                    }
+
+                    foundGroupRange = true;
+                    result[c] = group;
+                }
+
+                if (result.Count > 0) return result;
+            }
+
+            return result;
+        }
+
+        private static int FindPlanningHeaderRow(DataTable table, IEnumerable<int> grColumns)
+        {
+            var cols = grColumns.ToList();
+            for (int r = 0; r < Math.Min(10, table.Rows.Count); r++)
+            {
+                if (cols.Any(c => TryNormalizeStrictProductionGroup(GetCell(table.Rows[r], c), out _)))
+                    return r;
+            }
+
+            return 0;
+        }
+
+        private static List<string> GetBuildGroupFunctionWarnings(IEnumerable<ModuleMappingData> mappings)
+        {
+            return mappings
+                .GroupBy(m => m.BuildGroup)
+                .Where(g => g.Select(x => x.FunctionName).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1)
+                .Select(g => $"BuildGroup {g.Key} có nhiều Function khác nhau trong module list.")
+                .ToList();
+        }
+
+        private static void EnsureBuildGroupSettings(List<ModuleMappingData> mappings)
+        {
+            var existing = JsonStorage.Load<List<BuildGroupShiftSettingData>>(BuildGroupSettingsFile);
+            var settings = existing
+                .Where(s => !string.IsNullOrWhiteSpace(s.BuildGroup))
+                .GroupBy(s => NormalizeKey(s.BuildGroup))
+                .ToDictionary(g => g.Key, g => g.Last());
+
+            foreach (var group in mappings.GroupBy(m => m.BuildGroup))
+            {
+                if (settings.TryGetValue(group.Key, out var current))
+                {
+                    current.FunctionName = group.First().FunctionName;
+                    continue;
+                }
+
+                settings[group.Key] = new BuildGroupShiftSettingData
+                {
+                    BuildGroup = group.Key,
+                    FunctionName = group.First().FunctionName,
+                    UseShiftA = true,
+                    UseShiftB = false,
+                    WorkersA = 1,
+                    WorkersB = 1
+                };
+            }
+
+            JsonStorage.Save(BuildGroupSettingsFile, settings.Values.OrderBy(s => s.BuildGroup).ToList());
+        }
+
+        private static void SyncLegacyProductGroups(List<ModuleMappingData> mappings)
+        {
+            var groups = mappings
+                .GroupBy(m => m.BuildGroup)
+                .Select(g => new ProductGroupData
+                {
+                    GroupId = g.Key,
+                    Name = g.First().FunctionName,
+                    ProductionGroup = string.Empty
+                })
+                .OrderBy(g => g.GroupId)
+                .ToList();
+
+            JsonStorage.Save("productGroups.json", groups);
+        }
+
+        private static string GetCell(DataRow row, int index)
+        {
+            if (index < 0 || index >= row.ItemArray.Length) return string.Empty;
+            return row[index]?.ToString()?.Trim() ?? string.Empty;
+        }
+
+        private static double ParseDouble(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return 0;
+            var normalized = value.Trim().Replace(",", "");
+            return double.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed)
+                ? parsed
+                : 0;
+        }
+
+        private static bool IsU4(string value)
+        {
+            return string.Equals(value?.Trim(), "U4", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsHeaderRow(string functionName, string buildGroup, string fp)
+        {
+            return functionName.Contains("part", StringComparison.OrdinalIgnoreCase) ||
+                   buildGroup.Contains("build", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(fp, "FP", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string NormalizeKey(string value)
+        {
+            return (value ?? string.Empty).Trim().ToUpperInvariant();
+        }
+
+        private static string NormalizeProductionGroup(string value)
+        {
+            var text = (value ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+
+            var match = Regex.Match(text, @"Gr[\.\s]*(\d+)", RegexOptions.IgnoreCase);
+            if (match.Success) return $"Gr.{match.Groups[1].Value}";
+
+            var numericMatch = Regex.Match(text, @"^\d{3,}$");
+            if (numericMatch.Success) return $"Gr.{numericMatch.Value}";
+
+            return text;
+        }
+
+        private static bool TryNormalizeStrictProductionGroup(string value, out string group)
+        {
+            group = string.Empty;
+            var text = (value ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(text)) return false;
+
+            var match = Regex.Match(text, @"^Gr[\.\s]*(\d+)$", RegexOptions.IgnoreCase);
+            if (match.Success)
+            {
+                group = $"Gr.{match.Groups[1].Value}";
+                return true;
+            }
+
+            var numericMatch = Regex.Match(text, @"^\d{3,}$");
+            if (numericMatch.Success)
+            {
+                group = $"Gr.{numericMatch.Value}";
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool IsValidProductionGroup(string value)
+        {
+            return TryNormalizeStrictProductionGroup(value, out _);
+        }
+
+        private static System.Windows.Media.SolidColorBrush CreateColorForKey(string buildGroup, string productionGroup)
+        {
+            var hash = Math.Abs($"{buildGroup}|{productionGroup}".GetHashCode());
+            byte r = (byte)(150 + hash % 90);
+            byte g = (byte)(150 + (hash / 7) % 90);
+            byte b = (byte)(150 + (hash / 13) % 90);
+            return new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(r, g, b));
+        }
     }
 }
-

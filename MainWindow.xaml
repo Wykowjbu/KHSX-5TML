@@ -35,8 +35,8 @@
         <!-- DataTemplate mặc định cho block trên grid -->
         <DataTemplate DataType="{x:Type models:ProductBlock}">
             <Border Background="{Binding DisplayColor}" 
-                    BorderBrush="{Binding IsExceedingDeadline, Converter={StaticResource BoolToRedBorderConverter}}" 
-                    BorderThickness="{Binding IsExceedingDeadline, Converter={StaticResource BoolToBorderThicknessConverter}}" 
+                    BorderBrush="{Binding IsCapacityOverflow, Converter={StaticResource BoolToRedBorderConverter}}" 
+                    BorderThickness="{Binding IsCapacityOverflow, Converter={StaticResource BoolToBorderThicknessConverter}}" 
                     Margin="2" 
                     Padding="5" 
                     CornerRadius="3"
@@ -57,13 +57,14 @@
         <!-- Header -->
         <Border Grid.Row="0" Background="#f0f0f0" BorderBrush="#ccc" BorderThickness="0,0,0,1">
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="10,0">
-                <Button Content="1. Import Marketing" Command="{Binding ImportMarketingCommand}" Padding="10,5" Margin="0,0,10,0"/>
-                <Button Content="2. Thiết Lập Deadline" Command="{Binding ConfigDeadlinesCommand}" Padding="10,5" Margin="0,0,10,0"/>
-                <Button Content="Cấu Hình Groups (Marketing)" Command="{Binding ConfigGroupsCommand}" Padding="10,5" Margin="0,0,10,0" Background="#FF9800" Foreground="White" ToolTip="Đổi tên và thiết lập Group sản xuất mặc định"/>
-                <Button Content="3. Import MES -> Tạo Block" Command="{Binding ImportMESCommand}" Padding="10,5" Margin="0,0,10,0"/>
+                <Button Content="1. Import Module List" Command="{Binding ImportModuleListCommand}" Padding="10,5" Margin="0,0,10,0"/>
+                <Button Content="2. Import Planning" Command="{Binding ImportPlanningCommand}" Padding="10,5" Margin="0,0,10,0"/>
+                <Button Content="3. Thiết Lập Deadline" Command="{Binding ConfigDeadlinesCommand}" Padding="10,5" Margin="0,0,10,0"/>
+                <Button Content="4. Cấu Hình BuildGroup/Ca" Command="{Binding ConfigGroupsCommand}" Padding="10,5" Margin="0,0,10,0" Background="#FF9800" Foreground="White" ToolTip="Thiết lập ca A/B và số người cho từng BuildGroup"/>
+                <Button Content="5. Import MES -> Auto Schedule" Command="{Binding ImportMESCommand}" Padding="10,5" Margin="0,0,10,0"/>
                 
                 <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="10,0"/>
-                <Button Content="Lưu cấu hình" Command="{Binding SaveConfigurationCommand}" Padding="10,5" Margin="0,0,10,0"/>
+                <Button Content="Load" Command="{Binding LoadCommand}" Padding="10,5" Margin="0,0,10,0" Background="#607D8B" Foreground="White" ToolTip="Load lại dữ liệu và tính lại lịch theo logic hiện tại"/>
                 <Button Content="Xoá Toàn Bộ" Command="{Binding ClearAllBlocksCommand}" Padding="10,5" Margin="0,0,10,0" Background="#F44336" Foreground="White" ToolTip="Kéo toàn bộ lịch đã xếp về lại danh sách chưa gán"/>
                 <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="10,0"/>
                 <Button Content="➕ Thêm Line" Command="{Binding AddLineCommand}" Padding="10,5" Margin="0,0,10,0" Background="#4CAF50" Foreground="White"/>
@@ -97,7 +98,7 @@
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="{x:Type models:ProductBlock}">
                                     <Border Background="{Binding DisplayColor}" 
-                                            BorderBrush="{Binding IsExceedingDeadline, Converter={StaticResource BoolToRedBorderConverter}}" 
+                                            BorderBrush="{Binding IsCapacityOverflow, Converter={StaticResource BoolToRedBorderConverter}}" 
                                             BorderThickness="1" 
                                             Margin="2" 
                                             Padding="5" 
@@ -134,7 +135,7 @@
                     <!-- Nav Bar Thống kê số người -->
                     <Grid Margin="0,0,0,5">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="160"/>
+                            <ColumnDefinition Width="190"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         
@@ -150,7 +151,7 @@
                             </ItemsControl.ItemsPanel>
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate DataType="{x:Type models:DaySummary}">
-                                    <Border Width="120" Background="#FFF3E0" BorderBrush="#FFCC80" BorderThickness="1" Padding="0">
+                                    <Border Width="240" Background="#FFF3E0" BorderBrush="#FFCC80" BorderThickness="1" Padding="0">
                                         <TextBlock Text="{Binding DisplayText}" 
                                                    FontWeight="Bold" 
                                                    Foreground="#E65100" 
@@ -178,7 +179,7 @@
                                     </Style>
                                 </Grid.Style>
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="160"/>
+                                    <ColumnDefinition Width="190"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
 
@@ -233,7 +234,8 @@
                                     </ItemsControl.ItemsPanel>
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate DataType="{x:Type models:DayCell}">
-                                            <Border x:Name="CellBorder" Width="120" Height="100" 
+                                            <Border x:Name="CellBorder" Width="240" Height="150"
+                                                    ClipToBounds="True"
                                                     AllowDrop="{Binding IsDayOff, Converter={StaticResource InverseBoolConverter}}"
                                                     Drop="DayCell_Drop" DragEnter="DayCell_DragEnter"
                                                     MouseRightButtonUp="DayCell_RightClick"
@@ -257,7 +259,7 @@
                                                     </MultiBinding>
                                                 </Border.Background>
                                                 
-                                                <Grid>
+                                                <Grid ClipToBounds="True">
                                                     <Grid.RowDefinitions>
                                                         <RowDefinition Height="Auto"/>
                                                         <RowDefinition Height="*"/>
@@ -278,7 +280,7 @@
                                                                Margin="0,0,0,2" Panel.ZIndex="0" TextWrapping="Wrap"/>
 
                                                     <!-- Assigned Blocks -->
-                                                    <ItemsControl Grid.Row="1" ItemsSource="{Binding Blocks}" Panel.ZIndex="1" VerticalAlignment="Stretch">
+                                                    <ItemsControl Grid.Row="1" ItemsSource="{Binding Blocks}" Panel.ZIndex="1" VerticalAlignment="Stretch" ClipToBounds="True">
                                                         <ItemsControl.ItemsPanel>
                                                             <ItemsPanelTemplate>
                                                                 <UniformGrid VerticalAlignment="Top"/>
@@ -287,8 +289,8 @@
                                                         <ItemsControl.ItemTemplate>
                                                             <DataTemplate DataType="{x:Type models:ProductBlock}">
                                                                 <Border Background="{Binding DisplayColor}" 
-                                                                        BorderBrush="{Binding IsExceedingDeadline, Converter={StaticResource BoolToRedBorderConverter}}" 
-                                                                        BorderThickness="{Binding IsExceedingDeadline, Converter={StaticResource BoolToBorderThicknessConverter}}" 
+                                                                        BorderBrush="{Binding IsCapacityOverflow, Converter={StaticResource BoolToRedBorderConverter}}" 
+                                                                        BorderThickness="{Binding IsCapacityOverflow, Converter={StaticResource BoolToBorderThicknessConverter}}" 
                                                                         Margin="1" 
                                                                         Padding="2" 
                                                                         CornerRadius="3"
@@ -299,8 +301,8 @@
                                                                     <TextBlock Text="{Binding DisplayText}" 
                                                                                FontWeight="Bold" 
                                                                                Foreground="DarkSlateGray" 
-                                                                               FontSize="9"
-                                                                               LineHeight="10"
+                                                                               FontSize="11"
+                                                                               LineHeight="13"
                                                                                TextWrapping="Wrap"
                                                                                TextAlignment="Center"/>
                                                                 </Border>

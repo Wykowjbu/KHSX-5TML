@@ -24,6 +24,57 @@ namespace KHSX.Models
         public string ProductionGroup { get; set; } = string.Empty; // Gr.xxx (Cột E, F, H, I, J)
     }
 
+    public class ModuleMappingData
+    {
+        public string FP { get; set; } = string.Empty;
+        public string BuildGroup { get; set; } = string.Empty;
+        public string FunctionName { get; set; } = string.Empty;
+        public bool IsManual { get; set; }
+    }
+
+    public class PlanningBlockData
+    {
+        public string BuildGroup { get; set; } = string.Empty;
+        public string ProductionGroup { get; set; } = string.Empty;
+        public string FunctionName { get; set; } = string.Empty;
+        public double PlannedMinutes { get; set; }
+    }
+
+    public class OpenMinutesBlockData
+    {
+        public string BuildGroup { get; set; } = string.Empty;
+        public string ProductionGroup { get; set; } = string.Empty;
+        public string FunctionName { get; set; } = string.Empty;
+        public double OpenMinutes { get; set; }
+    }
+
+    public class BuildGroupShiftSettingData
+    {
+        public string BuildGroup { get; set; } = string.Empty;
+        public string FunctionName { get; set; } = string.Empty;
+        public bool UseShiftA { get; set; } = true;
+        public bool UseShiftB { get; set; }
+        public double WorkersA { get; set; } = 1;
+        public double WorkersB { get; set; } = 1;
+    }
+
+    public class ImportResult
+    {
+        public List<string> MissingFps { get; set; } = new List<string>();
+        public List<string> Warnings { get; set; } = new List<string>();
+        public int ImportedCount { get; set; }
+
+        public bool HasMissingFps => MissingFps.Count > 0;
+        public bool HasWarnings => Warnings.Count > 0;
+    }
+
+    public class BlockGenerationResult
+    {
+        public List<ProductBlock> Blocks { get; set; } = new List<ProductBlock>();
+        public List<string> Warnings { get; set; } = new List<string>();
+        public List<string> MissingDeadlineGroups { get; set; } = new List<string>();
+    }
+
     public class OpenMinutesData
     {
         public string ProductId { get; set; } = string.Empty;
@@ -46,6 +97,7 @@ namespace KHSX.Models
         public string FunctionName { get; set; } = string.Empty; // Tên fuction từ cấu hình Groups
         public double TotalMinutesRequired { get; set; }
         public double AllocatedMinutes { get; set; }
+        public bool IsCapacityOverflow { get; set; }
         public string DisplayColorHex { get; set; } = string.Empty;
     }
 

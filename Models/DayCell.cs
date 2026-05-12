@@ -23,6 +23,9 @@ namespace KHSX.Models
         private bool isDeadline;
 
         [ObservableProperty]
+        private bool isOverCapacity;
+
+        [ObservableProperty]
         private bool hasCustomConfig = false; // Đánh dấu cell này có cấu hình riêng
 
         [ObservableProperty]
@@ -44,6 +47,7 @@ namespace KHSX.Models
                 OnPropertyChanged(nameof(AvailableMinutes));
                 OnPropertyChanged(nameof(WatermarkText));
                 OnPropertyChanged(nameof(HasAvailableCapacity));
+                UpdateCapacityState();
             };
 
             // Listen to shift config changes
@@ -53,6 +57,7 @@ namespace KHSX.Models
                 OnPropertyChanged(nameof(AvailableMinutes));
                 OnPropertyChanged(nameof(WatermarkText));
                 OnPropertyChanged(nameof(HasAvailableCapacity));
+                UpdateCapacityState();
             };
         }
 
@@ -72,11 +77,17 @@ namespace KHSX.Models
             OnPropertyChanged(nameof(TotalCapacity));
             OnPropertyChanged(nameof(AvailableMinutes));
             OnPropertyChanged(nameof(HasAvailableCapacity));
+            UpdateCapacityState();
         }
 
         partial void OnIsWithinLineDeadlineChanged(bool value)
         {
             OnPropertyChanged(nameof(HasAvailableCapacity));
+        }
+
+        private void UpdateCapacityState()
+        {
+            IsOverCapacity = !IsDayOff && TotalUsed > TotalCapacity + 0.01;
         }
     }
 }

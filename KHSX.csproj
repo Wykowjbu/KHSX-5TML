@@ -9,6 +9,11 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="KHSX.Tests\**\*.cs" />
+    <None Remove="KHSX.Tests\**\*" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.105.0" />
     <Resource Include="Assets\logo.png" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />

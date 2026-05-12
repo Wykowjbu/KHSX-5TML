@@ -5,6 +5,7 @@ using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Controls;
+using System.Text.RegularExpressions;
 using KHSX.Models;
 using KHSX.ViewModels;
 
@@ -20,6 +21,7 @@ namespace KHSX
             {
                 vm.RequestDeadlineDialog += ShowDeadlineConfigDialog;
                 vm.RequestConfigGroupsDialog += ShowConfigGroupsDialog;
+                vm.RequestMissingFpMappingsDialog += ShowMissingFpMappingsDialog;
                 vm.RequestProductOrderSettingsDialog += ShowProductOrderSettingsDialog;
                 vm.RequestExportOrderDialog += ShowExportOrderDialog;
             }
@@ -61,17 +63,48 @@ namespace KHSX
 
         private void ShowConfigGroupsDialog()
         {
-            var groups = Services.JsonStorage.Load<System.Collections.Generic.List<ProductGroupData>>("productGroups.json");
-            if (groups == null || groups.Count == 0)
+            var mappings = Services.JsonStorage.Load<System.Collections.Generic.List<ModuleMappingData>>("moduleMappings.json");
+            if (mappings == null || mappings.Count == 0)
             {
-                MessageBox.Show("Chưa có dữ liệu Marketing. Vui lòng Import Marketing (Bước 1) trước.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("Chưa có dữ liệu Module List. Vui lòng Import Module List trước.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
+            var existingSettings = Services.JsonStorage.Load<System.Collections.Generic.List<BuildGroupShiftSettingData>>("buildGroupSettings.json")
+                ?? new System.Collections.Generic.List<BuildGroupShiftSettingData>();
+            var settingMap = existingSettings
+                .Where(s => !string.IsNullOrWhiteSpace(s.BuildGroup))
+                .GroupBy(s => s.BuildGroup)
+                .ToDictionary(g => g.Key, g => g.Last(), StringComparer.OrdinalIgnoreCase);
+
+            var buildGroups = mappings
+                .GroupBy(m => m.BuildGroup)
+                .Select(g =>
+                {
+                    settingMap.TryGetValue(g.Key, out var setting);
+                    return new
+                    {
+                        BuildGroup = g.Key,
+                        FunctionName = setting?.FunctionName ?? g.First().FunctionName,
+                        Fps = string.Join(", ", g.Select(x => x.FP).OrderBy(x => x)),
+                        Setting = setting ?? new BuildGroupShiftSettingData
+                        {
+                            BuildGroup = g.Key,
+                            FunctionName = g.First().FunctionName,
+                            UseShiftA = true,
+                            UseShiftB = false,
+                            WorkersA = 1,
+                            WorkersB = 1
+                        }
+                    };
+                })
+                .OrderBy(x => x.BuildGroup)
+                .ToList();
+
             var dialog = new Window
             {
-                Title = "Cấu Hình Product Groups",
-                Width = 600,
+                Title = "Cấu Hình BuildGroup / Ca",
+                Width = 900,
                 Height = 520,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
                 Owner = this,
@@ -87,92 +120,113 @@ namespace KHSX
 
             var infoText = new TextBlock
             {
-                Text = "Cập nhật Tên hiển thị và Production Group (Gr.xxx) mặc định cho mỗi nhóm sản phẩm.",
+                Text = "Chọn ca làm A/B và số người cho từng BuildGroup. FP được lấy từ Module List.",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 10)
             };
             topPanel.Children.Add(infoText);
 
             var headerRow = new Grid { Margin = new Thickness(0, 0, 0, 5) };
-            headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.5, GridUnitType.Star) });
+            headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.2, GridUnitType.Star) });
             headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
-            headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.5, GridUnitType.Star) });
+            headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
+            headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0.8, GridUnitType.Star) });
+            headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0.9, GridUnitType.Star) });
+            headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0.8, GridUnitType.Star) });
+            headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0.9, GridUnitType.Star) });
+            headerRow.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             
             var h1 = new TextBlock { Text = "Build Group", FontWeight = FontWeights.Bold };
-            var h2 = new TextBlock { Text = "function", FontWeight = FontWeights.Bold };
-            var h3 = new TextBlock { Text = "Gr.xxx Mặc Định", FontWeight = FontWeights.Bold };
-            Grid.SetColumn(h1, 0); Grid.SetColumn(h2, 1); Grid.SetColumn(h3, 2);
-            headerRow.Children.Add(h1); headerRow.Children.Add(h2); headerRow.Children.Add(h3);
+            var h2 = new TextBlock { Text = "Function", FontWeight = FontWeights.Bold };
+            var h3 = new TextBlock { Text = "FP", FontWeight = FontWeights.Bold };
+            var h4 = new TextBlock { Text = "Ca A", FontWeight = FontWeights.Bold };
+            var h5 = new TextBlock { Text = "Người A", FontWeight = FontWeights.Bold };
+            var h6 = new TextBlock { Text = "Ca B", FontWeight = FontWeights.Bold };
+            var h7 = new TextBlock { Text = "Người B", FontWeight = FontWeights.Bold };
+            var h8 = new TextBlock { Text = "Xoá", FontWeight = FontWeights.Bold };
+            Grid.SetColumn(h1, 0); Grid.SetColumn(h2, 1); Grid.SetColumn(h3, 2); Grid.SetColumn(h4, 3); Grid.SetColumn(h5, 4); Grid.SetColumn(h6, 5); Grid.SetColumn(h7, 6); Grid.SetColumn(h8, 7);
+            headerRow.Children.Add(h1); headerRow.Children.Add(h2); headerRow.Children.Add(h3); headerRow.Children.Add(h4); headerRow.Children.Add(h5); headerRow.Children.Add(h6); headerRow.Children.Add(h7); headerRow.Children.Add(h8);
             topPanel.Children.Add(headerRow);
             rootPanel.Children.Add(topPanel);
 
             var gridPanel = new Grid();
-            gridPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.5, GridUnitType.Star) });
+            gridPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.2, GridUnitType.Star) });
             gridPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
-            gridPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.5, GridUnitType.Star) });
+            gridPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
+            gridPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0.8, GridUnitType.Star) });
+            gridPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0.9, GridUnitType.Star) });
+            gridPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0.8, GridUnitType.Star) });
+            gridPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(0.9, GridUnitType.Star) });
+            gridPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-            var nameBoxes = new System.Collections.Generic.Dictionary<string, TextBox>();
-            var groupBoxes = new System.Collections.Generic.Dictionary<string, ComboBox>();
-
-            // Lấy danh sách các Gr.xxx có thể có từ Products.json
-            var products = Services.JsonStorage.Load<System.Collections.Generic.List<ProductData>>("products.json");
-            var availableGr = new System.Collections.Generic.List<string> { "" }; // Option rỗng
-            if (products != null)
-            {
-                var allGrs = products.SelectMany(p => p.QuantitiesByGroup.Keys).Distinct().OrderBy(g => g);
-                availableGr.AddRange(allGrs);
-            }
+            var useABoxes = new System.Collections.Generic.Dictionary<string, CheckBox>();
+            var useBBoxes = new System.Collections.Generic.Dictionary<string, CheckBox>();
+            var workersABoxes = new System.Collections.Generic.Dictionary<string, TextBox>();
+            var workersBBoxes = new System.Collections.Generic.Dictionary<string, TextBox>();
+            var deletedBuildGroups = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             int rowIdx = 0;
-            foreach (var group in groups)
+            foreach (var group in buildGroups)
             {
                 gridPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-                var idLabel = new TextBlock { Text = group.GroupId, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 5, 10, 5) };
+                var idLabel = new TextBlock { Text = group.BuildGroup, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 5, 10, 5) };
+                var rowControls = new System.Collections.Generic.List<UIElement> { idLabel };
                 Grid.SetRow(idLabel, rowIdx);
                 Grid.SetColumn(idLabel, 0);
                 gridPanel.Children.Add(idLabel);
 
-                var nameBox = new TextBox { Text = group.Name, Margin = new Thickness(0, 5, 10, 5), Padding = new Thickness(2) };
-                nameBoxes[group.GroupId] = nameBox;
-                Grid.SetRow(nameBox, rowIdx);
-                Grid.SetColumn(nameBox, 1);
-                gridPanel.Children.Add(nameBox);
+                var functionLabel = new TextBlock { Text = group.FunctionName, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 5, 10, 5), TextWrapping = TextWrapping.Wrap };
+                Grid.SetRow(functionLabel, rowIdx);
+                Grid.SetColumn(functionLabel, 1);
+                gridPanel.Children.Add(functionLabel);
+                rowControls.Add(functionLabel);
 
-                var defaultGroupBox = new ComboBox 
-                { 
-                    Margin = new Thickness(0, 5, 0, 5), 
-                    Padding = new Thickness(2),
-                    ItemsSource = availableGr
+                var fpLabel = new TextBlock { Text = group.Fps, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 5, 10, 5), TextWrapping = TextWrapping.Wrap };
+                Grid.SetRow(fpLabel, rowIdx);
+                Grid.SetColumn(fpLabel, 2);
+                gridPanel.Children.Add(fpLabel);
+                rowControls.Add(fpLabel);
+
+                var useA = new CheckBox { IsChecked = group.Setting.UseShiftA, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+                useABoxes[group.BuildGroup] = useA;
+                Grid.SetRow(useA, rowIdx);
+                Grid.SetColumn(useA, 3);
+                gridPanel.Children.Add(useA);
+                rowControls.Add(useA);
+
+                var workersA = new TextBox { Text = group.Setting.WorkersA.ToString("0.##"), Margin = new Thickness(0, 5, 10, 5), Padding = new Thickness(2) };
+                workersABoxes[group.BuildGroup] = workersA;
+                Grid.SetRow(workersA, rowIdx);
+                Grid.SetColumn(workersA, 4);
+                gridPanel.Children.Add(workersA);
+                rowControls.Add(workersA);
+
+                var useB = new CheckBox { IsChecked = group.Setting.UseShiftB, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+                useBBoxes[group.BuildGroup] = useB;
+                Grid.SetRow(useB, rowIdx);
+                Grid.SetColumn(useB, 5);
+                gridPanel.Children.Add(useB);
+                rowControls.Add(useB);
+
+                var workersB = new TextBox { Text = group.Setting.WorkersB.ToString("0.##"), Margin = new Thickness(0, 5, 0, 5), Padding = new Thickness(2) };
+                workersBBoxes[group.BuildGroup] = workersB;
+                Grid.SetRow(workersB, rowIdx);
+                Grid.SetColumn(workersB, 6);
+                gridPanel.Children.Add(workersB);
+                rowControls.Add(workersB);
+
+                var deleteBtn = new Button { Content = "Xoá", Width = 52, Height = 26, Margin = new Thickness(8, 5, 0, 5) };
+                deleteBtn.Click += (s, e) =>
+                {
+                    deletedBuildGroups.Add(group.BuildGroup);
+                    foreach (var control in rowControls)
+                        control.Visibility = Visibility.Collapsed;
+                    deleteBtn.Visibility = Visibility.Collapsed;
                 };
-                
-                // Mặc định chọn Gr lớn nhất nếu chưa có
-                if (string.IsNullOrEmpty(group.ProductionGroup) && products != null)
-                {
-                    var groupProducts = products.Where(p => p.GroupId == group.GroupId).ToList();
-                    string maxGr = "";
-                    
-                    var allGroupKeys = groupProducts.SelectMany(p => p.QuantitiesByGroup.Keys)
-                                                    .Where(k => !string.IsNullOrEmpty(k))
-                                                    .Distinct()
-                                                    .ToList();
-                    if (allGroupKeys.Any())
-                    {
-                        // Sắp xếp giảm dần theo chuỗi (VD: Gr.289 đứng trước Gr.284)
-                        maxGr = allGroupKeys.OrderByDescending(k => k).First();
-                    }
-                    
-                    defaultGroupBox.SelectedItem = maxGr;
-                }
-                else
-                {
-                    defaultGroupBox.SelectedItem = group.ProductionGroup;
-                }
-                
-                groupBoxes[group.GroupId] = defaultGroupBox;
-                Grid.SetRow(defaultGroupBox, rowIdx);
-                Grid.SetColumn(defaultGroupBox, 2);
-                gridPanel.Children.Add(defaultGroupBox);
+                Grid.SetRow(deleteBtn, rowIdx);
+                Grid.SetColumn(deleteBtn, 7);
+                gridPanel.Children.Add(deleteBtn);
 
                 rowIdx++;
             }
@@ -183,59 +237,70 @@ namespace KHSX
             // Button panel - docked bottom
             var buttonPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 10, 0, 0) };
             DockPanel.SetDock(buttonPanel, Dock.Bottom);
+
+            var addBtn = new Button { Content = "Thêm BuildGroup", Width = 130, Height = 30, Margin = new Thickness(0, 0, 10, 0) };
+            addBtn.Click += (s, e) =>
+            {
+                var added = ShowAddBuildGroupDialog();
+                if (added == null) return;
+
+                var allMappings = Services.JsonStorage.Load<System.Collections.Generic.List<ModuleMappingData>>("moduleMappings.json");
+                allMappings.RemoveAll(m => string.Equals(m.BuildGroup, added.Value.Mapping.BuildGroup, StringComparison.OrdinalIgnoreCase)
+                                           && string.Equals(m.FP, added.Value.Mapping.FP, StringComparison.OrdinalIgnoreCase));
+                allMappings.Add(added.Value.Mapping);
+                Services.JsonStorage.Save("moduleMappings.json", allMappings);
+
+                var allSettings = Services.JsonStorage.Load<System.Collections.Generic.List<BuildGroupShiftSettingData>>("buildGroupSettings.json");
+                allSettings.RemoveAll(s => string.Equals(s.BuildGroup, added.Value.Setting.BuildGroup, StringComparison.OrdinalIgnoreCase));
+                allSettings.Add(added.Value.Setting);
+                Services.JsonStorage.Save("buildGroupSettings.json", allSettings);
+
+                MessageBox.Show("Đã thêm BuildGroup. Mở lại cấu hình để xem dòng mới.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
+                dialog.DialogResult = true;
+            };
             
             var saveBtn = new Button { Content = "Lưu Cập Nhật", Width = 100, Height = 30, Margin = new Thickness(0, 0, 10, 0), Background = new SolidColorBrush(Color.FromRgb(33, 150, 243)), Foreground = Brushes.White };
             saveBtn.Click += (s, e) =>
             {
-                foreach (var group in groups)
+                var newSettings = new System.Collections.Generic.List<BuildGroupShiftSettingData>();
+                foreach (var group in buildGroups)
                 {
-                    if (nameBoxes.TryGetValue(group.GroupId, out var nb)) group.Name = nb.Text;
-                    if (groupBoxes.TryGetValue(group.GroupId, out var cb)) 
+                    if (deletedBuildGroups.Contains(group.BuildGroup)) continue;
+
+                    var useA = useABoxes[group.BuildGroup].IsChecked == true;
+                    var useB = useBBoxes[group.BuildGroup].IsChecked == true;
+                    if (!useA && !useB)
                     {
-                        group.ProductionGroup = cb.SelectedItem as string ?? "";
+                        MessageBox.Show($"BuildGroup {group.BuildGroup} phải chọn ít nhất một ca A hoặc B.", "Thiếu cấu hình", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        return;
                     }
+
+                    double.TryParse(workersABoxes[group.BuildGroup].Text, out var workersA);
+                    double.TryParse(workersBBoxes[group.BuildGroup].Text, out var workersB);
+
+                    newSettings.Add(new BuildGroupShiftSettingData
+                    {
+                        BuildGroup = group.BuildGroup,
+                        FunctionName = group.FunctionName,
+                        UseShiftA = useA,
+                        UseShiftB = useB,
+                        WorkersA = workersA > 0 ? workersA : 1,
+                        WorkersB = workersB > 0 ? workersB : 1
+                    });
                 }
-                Services.JsonStorage.Save("productGroups.json", groups);
-                MessageBox.Show("Đã lưu cấu hình product groups!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
+
+                var remainingMappings = mappings
+                    .Where(m => !deletedBuildGroups.Contains(m.BuildGroup))
+                    .ToList();
+                Services.JsonStorage.Save("moduleMappings.json", remainingMappings);
+                Services.JsonStorage.Save("buildGroupSettings.json", newSettings);
+                MessageBox.Show("Đã lưu cấu hình BuildGroup/Ca!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
                 dialog.DialogResult = true;
             };
 
             var cancelBtn = new Button { Content = "Hủy", Width = 80, Height = 30 };
             cancelBtn.Click += (s, e) => dialog.DialogResult = false;
-
-            var globalGroupSelector = new ComboBox
-            {
-                Width = 100, Height = 30, Margin = new Thickness(0, 0, 10, 0),
-                ItemsSource = availableGr,
-                VerticalContentAlignment = VerticalAlignment.Center
-            };
-            
-            var initialMaxGr = availableGr.Where(g => !string.IsNullOrEmpty(g)).OrderByDescending(g => g).FirstOrDefault();
-            if (!string.IsNullOrEmpty(initialMaxGr)) globalGroupSelector.SelectedItem = initialMaxGr;
-
-            var setMaxGrBtn = new Button { Content = "Áp dụng cho tất cả", Width = 130, Height = 30, Margin = new Thickness(0, 0, 10, 0), Background = new SolidColorBrush(Color.FromRgb(255, 152, 0)), Foreground = Brushes.White };
-            setMaxGrBtn.Click += (s, e) =>
-            {
-                var selectedGr = globalGroupSelector.SelectedItem as string;
-                if (string.IsNullOrEmpty(selectedGr)) return;
-
-                var confirmed = MessageBox.Show(
-                    $"Bạn có chắc chắn muốn thiết lập mặc định '{selectedGr}' cho TẤT CẢ các dòng không?",
-                    "Xác nhận thay đổi hàng loạt",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Question);
-
-                if (confirmed == MessageBoxResult.Yes)
-                {
-                    foreach (var cb in groupBoxes.Values)
-                    {
-                        cb.SelectedItem = selectedGr;
-                    }
-                }
-            };
-
-            buttonPanel.Children.Add(globalGroupSelector);
-            buttonPanel.Children.Add(setMaxGrBtn);
+            buttonPanel.Children.Add(addBtn);
             buttonPanel.Children.Add(saveBtn);
             buttonPanel.Children.Add(cancelBtn);
             rootPanel.Children.Add(buttonPanel);
@@ -245,20 +310,131 @@ namespace KHSX
             dialog.ShowDialog();
         }
 
+        private (ModuleMappingData Mapping, BuildGroupShiftSettingData Setting)? ShowAddBuildGroupDialog()
+        {
+            var dialog = new Window
+            {
+                Title = "Thêm BuildGroup",
+                Width = 420,
+                SizeToContent = SizeToContent.Height,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.NoResize
+            };
+
+            var panel = new StackPanel { Margin = new Thickness(20) };
+
+            TextBox AddTextBox(string label, string text = "")
+            {
+                panel.Children.Add(new TextBlock { Text = label, FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 4) });
+                var box = new TextBox { Text = text, Margin = new Thickness(0, 0, 0, 10), Padding = new Thickness(4) };
+                panel.Children.Add(box);
+                return box;
+            }
+
+            var buildGroupBox = AddTextBox("BuildGroup");
+            var functionBox = AddTextBox("Function");
+            var fpBox = AddTextBox("FP (nếu bỏ trống sẽ dùng BuildGroup)");
+
+            var shiftPanel = new Grid { Margin = new Thickness(0, 4, 0, 10) };
+            shiftPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            shiftPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            shiftPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            shiftPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var useA = new CheckBox { Content = "Ca A", IsChecked = true, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
+            var workersA = new TextBox { Text = "1", Width = 60, Margin = new Thickness(0, 0, 16, 0), Padding = new Thickness(4) };
+            var useB = new CheckBox { Content = "Ca B", IsChecked = false, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
+            var workersB = new TextBox { Text = "1", Width = 60, Padding = new Thickness(4) };
+            Grid.SetColumn(useA, 0); Grid.SetColumn(workersA, 1); Grid.SetColumn(useB, 2); Grid.SetColumn(workersB, 3);
+            shiftPanel.Children.Add(useA); shiftPanel.Children.Add(workersA); shiftPanel.Children.Add(useB); shiftPanel.Children.Add(workersB);
+            panel.Children.Add(shiftPanel);
+
+            (ModuleMappingData Mapping, BuildGroupShiftSettingData Setting)? result = null;
+
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right };
+            var saveBtn = new Button { Content = "Thêm", Width = 80, Height = 30, Margin = new Thickness(0, 0, 10, 0), Background = new SolidColorBrush(Color.FromRgb(33, 150, 243)), Foreground = Brushes.White };
+            saveBtn.Click += (s, e) =>
+            {
+                var buildGroup = buildGroupBox.Text.Trim().ToUpperInvariant();
+                var functionName = functionBox.Text.Trim();
+                var fp = string.IsNullOrWhiteSpace(fpBox.Text) ? buildGroup : fpBox.Text.Trim().ToUpperInvariant();
+                var useShiftA = useA.IsChecked == true;
+                var useShiftB = useB.IsChecked == true;
+
+                if (string.IsNullOrWhiteSpace(buildGroup) || string.IsNullOrWhiteSpace(functionName))
+                {
+                    MessageBox.Show("BuildGroup và Function là bắt buộc.", "Thiếu dữ liệu", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+                if (!useShiftA && !useShiftB)
+                {
+                    MessageBox.Show("Phải chọn ít nhất một ca A hoặc B.", "Thiếu ca", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                double.TryParse(workersA.Text, out var workerAValue);
+                double.TryParse(workersB.Text, out var workerBValue);
+
+                var mapping = new ModuleMappingData
+                {
+                    FP = fp,
+                    BuildGroup = buildGroup,
+                    FunctionName = functionName,
+                    IsManual = true
+                };
+                var setting = new BuildGroupShiftSettingData
+                {
+                    BuildGroup = buildGroup,
+                    FunctionName = functionName,
+                    UseShiftA = useShiftA,
+                    UseShiftB = useShiftB,
+                    WorkersA = workerAValue > 0 ? workerAValue : 1,
+                    WorkersB = workerBValue > 0 ? workerBValue : 1
+                };
+
+                result = (mapping, setting);
+                dialog.DialogResult = true;
+            };
+            var cancelBtn = new Button { Content = "Hủy", Width = 80, Height = 30 };
+            cancelBtn.Click += (s, e) => dialog.DialogResult = false;
+            buttons.Children.Add(saveBtn);
+            buttons.Children.Add(cancelBtn);
+            panel.Children.Add(buttons);
+
+            dialog.Content = panel;
+            return dialog.ShowDialog() == true ? result : null;
+        }
+
         private void ShowDeadlineConfigDialog()
         {
-            // Đọc dữ liệu Product groups để hiển thị
-            var groups = Services.JsonStorage.Load<System.Collections.Generic.List<ProductGroupData>>("productGroups.json");
-            if (groups == null || groups.Count == 0)
-            {
-                MessageBox.Show("Chưa có dữ liệu Marketing. Vui lòng Import Marketing (Bước 1) trước.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
+            var planningGroups = Services.JsonStorage.Load<System.Collections.Generic.List<PlanningBlockData>>("planningBlocks.json")
+                .Select(b => NormalizeProductionGroup(b.ProductionGroup));
+            var openGroups = Services.JsonStorage.Load<System.Collections.Generic.List<OpenMinutesBlockData>>("openMinutes.json")
+                .Select(b => NormalizeProductionGroup(b.ProductionGroup));
+
+            var existingDeadlines = Services.JsonStorage.Load<System.Collections.Generic.List<DeadlineData>>("deadlines.json") 
+                ?? new System.Collections.Generic.List<DeadlineData>();
+            var existingGroups = existingDeadlines.Select(d => NormalizeProductionGroup(d.GroupNumber));
+
+            var requiredGroups = planningGroups
+                .Concat(openGroups)
+                .Where(g => !string.IsNullOrWhiteSpace(g))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(g => g)
+                .ToList();
+
+            var productionGroups = requiredGroups
+                .Concat(existingGroups)
+                .Where(g => !string.IsNullOrWhiteSpace(g))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(g => g)
+                .ToList();
 
             var dialog = new Window
             {
                 Title = "Thiết Lập Deadline Cho Group",
-                Width = 420,
+                Width = 560,
                 Height = 500,
                 MinHeight = 250,
                 WindowStartupLocation = WindowStartupLocation.CenterOwner,
@@ -271,7 +447,7 @@ namespace KHSX
             // Top info
             var infoText = new TextBlock
             {
-                Text = "Nhập ngày deadline cho từng Production Group. Nếu bỏ trống, hệ thống sẽ sử dụng Deadline Tổng.",
+                Text = "Nhập deadline cho Gr.xxx đang dùng. Gr.xxx cũ không còn trong Planning/MES có thể xoá bằng cách để trống ngày rồi lưu.",
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 10)
             };
@@ -282,46 +458,66 @@ namespace KHSX
             var gridPanel = new Grid();
             gridPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             gridPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
-
-            // Load existing deadlines
-            var existingDeadlines = Services.JsonStorage.Load<System.Collections.Generic.List<DeadlineData>>("deadlines.json") 
-                ?? new System.Collections.Generic.List<DeadlineData>();
-
-            // Lấy danh sách Gr.xxx duy nhất từ nhóm và từ sản phẩm
-            var products = Services.JsonStorage.Load<System.Collections.Generic.List<ProductData>>("products.json");
-            var allGroupsFromProducts = products?.SelectMany(p => p.QuantitiesByGroup.Keys) ?? System.Linq.Enumerable.Empty<string>();
-
-            var productionGroups = groups.Select(g => g.ProductionGroup)
-                                          .Concat(allGroupsFromProducts)
-                                          .Where(g => !string.IsNullOrWhiteSpace(g))
-                                          .Distinct()
-                                          .OrderBy(g => g)
-                                          .ToList();
+            gridPanel.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
             var datePickers = new System.Collections.Generic.Dictionary<string, DatePicker>();
+            var deletedGroups = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             int rowIdx = 0;
-            foreach (var grp in productionGroups)
+            void AddDeadlineRow(string rawGroup, DateTime? selectedDate, bool isRequired)
             {
+                var grp = NormalizeProductionGroup(rawGroup);
+                if (string.IsNullOrWhiteSpace(grp) || datePickers.ContainsKey(grp)) return;
+
                 gridPanel.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
-                var groupLabel = new TextBlock { Text = grp, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 5, 10, 5), FontWeight = FontWeights.Bold };
+                var groupLabel = new TextBlock 
+                { 
+                    Text = isRequired ? $"{grp} *" : $"{grp} (tự thêm/cũ)",
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(0, 5, 10, 5),
+                    FontWeight = FontWeights.Bold,
+                    ToolTip = isRequired ? "Gr.xxx đang có trong Planning/MES, bắt buộc nhập deadline." : "Có thể xoá dòng này."
+                };
                 Grid.SetRow(groupLabel, rowIdx);
                 Grid.SetColumn(groupLabel, 0);
                 gridPanel.Children.Add(groupLabel);
 
                 var datePicker = new DatePicker { Margin = new Thickness(0, 5, 0, 5) };
-                var existing = existingDeadlines.Find(d => d.GroupNumber == grp);
-                if (existing != null)
-                {
-                    datePicker.SelectedDate = existing.Deadline;
-                }
+                datePicker.SelectedDate = selectedDate;
                 datePickers[grp] = datePicker;
                 Grid.SetRow(datePicker, rowIdx);
                 Grid.SetColumn(datePicker, 1);
                 gridPanel.Children.Add(datePicker);
 
+                var deleteBtn = new Button { Content = "Xoá", Width = 52, Height = 26, Margin = new Thickness(8, 5, 0, 5) };
+                deleteBtn.Click += (s, e) =>
+                {
+                    if (requiredGroups.Contains(grp, StringComparer.OrdinalIgnoreCase))
+                    {
+                        MessageBox.Show($"{grp} đang có trong Planning/MES nên không thể xoá.", "Không thể xoá", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        return;
+                    }
+
+                    deletedGroups.Add(grp);
+                    datePickers.Remove(grp);
+                    groupLabel.Visibility = Visibility.Collapsed;
+                    datePicker.Visibility = Visibility.Collapsed;
+                    deleteBtn.Visibility = Visibility.Collapsed;
+                };
+                Grid.SetRow(deleteBtn, rowIdx);
+                Grid.SetColumn(deleteBtn, 2);
+                gridPanel.Children.Add(deleteBtn);
+
                 rowIdx++;
+            }
+
+            foreach (var group in productionGroups)
+            {
+                var normalized = NormalizeProductionGroup(group);
+                var existing = existingDeadlines.Find(d =>
+                    string.Equals(NormalizeProductionGroup(d.GroupNumber), normalized, StringComparison.OrdinalIgnoreCase));
+                AddDeadlineRow(normalized, existing?.Deadline, requiredGroups.Contains(normalized, StringComparer.OrdinalIgnoreCase));
             }
 
             scrollView.Content = gridPanel;
@@ -329,14 +525,54 @@ namespace KHSX
             // Button panel - docked bottom
             var buttonPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 10, 0, 0) };
             DockPanel.SetDock(buttonPanel, Dock.Bottom);
+
+            var newGroupBox = new TextBox
+            {
+                Width = 95,
+                Height = 30,
+                Margin = new Thickness(0, 0, 8, 0),
+                VerticalContentAlignment = VerticalAlignment.Center,
+                ToolTip = "Nhập 285 hoặc Gr.285"
+            };
+
+            var addBtn = new Button { Content = "Thêm Gr", Width = 80, Height = 30, Margin = new Thickness(0, 0, 10, 0) };
+            addBtn.Click += (s, e) =>
+            {
+                var grp = NormalizeProductionGroup(newGroupBox.Text);
+                if (string.IsNullOrWhiteSpace(grp))
+                {
+                    MessageBox.Show("Nhập Gr.xxx trước khi thêm.", "Thiếu Gr.xxx", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                if (datePickers.ContainsKey(grp))
+                {
+                    MessageBox.Show($"{grp} đã có trong danh sách.", "Trùng Gr.xxx", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                deletedGroups.Remove(grp);
+                AddDeadlineRow(grp, null, false);
+                newGroupBox.Text = "";
+            };
             
             var saveBtn = new Button { Content = "Lưu Deadlines", Width = 100, Height = 30, Margin = new Thickness(0, 0, 10, 0), Background = new SolidColorBrush(Color.FromRgb(33, 150, 243)), Foreground = Brushes.White };
             saveBtn.Click += (s, e) =>
             {
+                var missing = datePickers
+                    .Where(kvp => requiredGroups.Contains(kvp.Key, StringComparer.OrdinalIgnoreCase) && !kvp.Value.SelectedDate.HasValue)
+                    .Select(kvp => kvp.Key)
+                    .ToList();
+                if (missing.Count > 0)
+                {
+                    MessageBox.Show("Phải nhập deadline cho: " + string.Join(", ", missing), "Thiếu Deadline", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
                 var newDeadlines = new System.Collections.Generic.List<DeadlineData>();
                 foreach (var kvp in datePickers)
                 {
-                    if (kvp.Value.SelectedDate.HasValue)
+                    if (!deletedGroups.Contains(kvp.Key) && kvp.Value.SelectedDate.HasValue)
                     {
                         newDeadlines.Add(new DeadlineData { GroupNumber = kvp.Key, Deadline = kvp.Value.SelectedDate.Value });
                     }
@@ -349,6 +585,8 @@ namespace KHSX
             var cancelBtn = new Button { Content = "Hủy", Width = 80, Height = 30 };
             cancelBtn.Click += (s, e) => dialog.DialogResult = false;
 
+            buttonPanel.Children.Add(newGroupBox);
+            buttonPanel.Children.Add(addBtn);
             buttonPanel.Children.Add(saveBtn);
             buttonPanel.Children.Add(cancelBtn);
             rootPanel.Children.Add(buttonPanel);
@@ -364,14 +602,124 @@ namespace KHSX
             }
         }
 
+        private System.Collections.Generic.List<ModuleMappingData>? ShowMissingFpMappingsDialog(System.Collections.Generic.List<string> missingFps)
+        {
+            if (missingFps == null || missingFps.Count == 0) return new System.Collections.Generic.List<ModuleMappingData>();
+
+            var dialog = new Window
+            {
+                Title = "Tạo mapping FP thiếu",
+                Width = 620,
+                Height = 420,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this,
+                ResizeMode = ResizeMode.CanResize,
+                MinHeight = 260
+            };
+
+            var rootPanel = new DockPanel { Margin = new Thickness(20) };
+            var infoText = new TextBlock
+            {
+                Text = "Các FP dưới đây chưa có trong Module List. Nhập BuildGroup và Function để lưu lại dùng cho các lần import sau.",
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, 10)
+            };
+            DockPanel.SetDock(infoText, Dock.Top);
+            rootPanel.Children.Add(infoText);
+
+            var grid = new Grid();
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1.5, GridUnitType.Star) });
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(2, GridUnitType.Star) });
+
+            grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+            var fpHeader = new TextBlock { Text = "FP", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 10, 5) };
+            var bgHeader = new TextBlock { Text = "BuildGroup", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 10, 5) };
+            var fnHeader = new TextBlock { Text = "Function", FontWeight = FontWeights.Bold, Margin = new Thickness(0, 0, 0, 5) };
+            Grid.SetRow(fpHeader, 0); Grid.SetColumn(fpHeader, 0);
+            Grid.SetRow(bgHeader, 0); Grid.SetColumn(bgHeader, 1);
+            Grid.SetRow(fnHeader, 0); Grid.SetColumn(fnHeader, 2);
+            grid.Children.Add(fpHeader); grid.Children.Add(bgHeader); grid.Children.Add(fnHeader);
+
+            var buildGroupBoxes = new System.Collections.Generic.Dictionary<string, TextBox>();
+            var functionBoxes = new System.Collections.Generic.Dictionary<string, TextBox>();
+
+            int rowIndex = 1;
+            foreach (var fp in missingFps.OrderBy(x => x))
+            {
+                grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+                var fpLabel = new TextBlock { Text = fp, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(0, 5, 10, 5), FontWeight = FontWeights.Bold };
+                Grid.SetRow(fpLabel, rowIndex);
+                Grid.SetColumn(fpLabel, 0);
+                grid.Children.Add(fpLabel);
+
+                var bgBox = new TextBox { Text = fp, Margin = new Thickness(0, 5, 10, 5), Padding = new Thickness(2) };
+                buildGroupBoxes[fp] = bgBox;
+                Grid.SetRow(bgBox, rowIndex);
+                Grid.SetColumn(bgBox, 1);
+                grid.Children.Add(bgBox);
+
+                var fnBox = new TextBox { Margin = new Thickness(0, 5, 0, 5), Padding = new Thickness(2) };
+                functionBoxes[fp] = fnBox;
+                Grid.SetRow(fnBox, rowIndex);
+                Grid.SetColumn(fnBox, 2);
+                grid.Children.Add(fnBox);
+
+                rowIndex++;
+            }
+
+            var scroll = new ScrollViewer { Content = grid, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
+
+            var resultMappings = new System.Collections.Generic.List<ModuleMappingData>();
+            var buttonPanel = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 10, 0, 0) };
+            DockPanel.SetDock(buttonPanel, Dock.Bottom);
+
+            var saveButton = new Button { Content = "Lưu Mapping", Width = 110, Height = 30, Margin = new Thickness(0, 0, 10, 0), Background = new SolidColorBrush(Color.FromRgb(33, 150, 243)), Foreground = Brushes.White };
+            saveButton.Click += (s, e) =>
+            {
+                resultMappings.Clear();
+                foreach (var fp in missingFps)
+                {
+                    var buildGroup = buildGroupBoxes[fp].Text.Trim();
+                    var functionName = functionBoxes[fp].Text.Trim();
+                    if (string.IsNullOrWhiteSpace(buildGroup) || string.IsNullOrWhiteSpace(functionName))
+                    {
+                        MessageBox.Show($"FP {fp} phải có BuildGroup và Function.", "Thiếu mapping", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        return;
+                    }
+
+                    resultMappings.Add(new ModuleMappingData
+                    {
+                        FP = fp,
+                        BuildGroup = buildGroup,
+                        FunctionName = functionName,
+                        IsManual = true
+                    });
+                }
+
+                dialog.DialogResult = true;
+            };
+
+            var cancelButton = new Button { Content = "Hủy", Width = 80, Height = 30 };
+            cancelButton.Click += (s, e) => dialog.DialogResult = false;
+
+            buttonPanel.Children.Add(saveButton);
+            buttonPanel.Children.Add(cancelButton);
+            rootPanel.Children.Add(buttonPanel);
+            rootPanel.Children.Add(scroll);
+
+            dialog.Content = rootPanel;
+            return dialog.ShowDialog() == true ? resultMappings : null;
+        }
+
         private void ProductBlock_MouseMove(object sender, MouseEventArgs e)
         {
             if (e.LeftButton == MouseButtonState.Pressed && sender is FrameworkElement element)
             {
                 if (element.DataContext is ProductBlock block)
                 {
-                    // Đóng gói data để kéo thả
-                    DataObject data = new DataObject("ProductBlock", block);
+                    var data = new DataObject("ProductBlock", block);
                     DragDrop.DoDragDrop(element, data, DragDropEffects.Move);
                 }
             }
@@ -379,7 +727,7 @@ namespace KHSX
 
         private void DayCell_DragEnter(object sender, DragEventArgs e)
         {
-            if (!e.Data.GetDataPresent("ProductBlock"))
+            if (!e.Data.GetDataPresent("ProductBlock") && !e.Data.GetDataPresent("DayCellBlocks"))
             {
                 e.Effects = DragDropEffects.None;
             }
@@ -424,6 +772,22 @@ namespace KHSX
 
         private void DayCell_Drop(object sender, DragEventArgs e)
         {
+            if (e.Data.GetDataPresent("DayCellBlocks"))
+            {
+                var sourceDay = e.Data.GetData("DayCellBlocks") as DayCell;
+                if (sourceDay != null && sender is FrameworkElement element && element.Tag is DayCell targetDay)
+                {
+                    var targetRow = FindParentRow(element);
+                    var vm = this.DataContext as MainViewModel;
+                    if (targetRow != null)
+                    {
+                        vm?.HandleDropCellGroup(sourceDay, targetDay, targetRow);
+                        vm?.SaveConfigurationCommand.Execute(null);
+                    }
+                }
+                return;
+            }
+
             if (e.Data.GetDataPresent("ProductBlock"))
             {
                 var block = e.Data.GetData("ProductBlock") as ProductBlock;
@@ -730,7 +1094,7 @@ namespace KHSX
                     day.HasCustomConfig = false;
                     if (vm != null)
                     {
-                        vm.RepackRowBlocks(parentRow);
+                        vm.RepackRowBlocksKeepingOverflowInDay(parentRow, day);
                         var siblingRow = vm.Rows.FirstOrDefault(r => r != parentRow && r.ParentLineName == parentRow.ParentLineName);
                         if (siblingRow != null)
                             vm.RepackRowBlocks(siblingRow);
@@ -1012,6 +1376,34 @@ namespace KHSX
                 parentObject = VisualTreeHelper.GetParent(parentObject);
             }
             return null;
+        }
+
+        private DayCell? FindParentDayCell(DependencyObject child)
+        {
+            DependencyObject parentObject = child;
+            while (parentObject != null)
+            {
+                if (parentObject is FrameworkElement fe && fe.Tag is DayCell day)
+                {
+                    return day;
+                }
+                parentObject = VisualTreeHelper.GetParent(parentObject);
+            }
+            return null;
+        }
+
+        private static string NormalizeProductionGroup(string value)
+        {
+            var text = (value ?? string.Empty).Trim();
+            if (string.IsNullOrWhiteSpace(text)) return string.Empty;
+
+            var grMatch = Regex.Match(text, @"Gr[\.\s]*(\d+)", RegexOptions.IgnoreCase);
+            if (grMatch.Success) return $"Gr.{grMatch.Groups[1].Value}";
+
+            var numericMatch = Regex.Match(text, @"^\d{3,}$");
+            if (numericMatch.Success) return $"Gr.{numericMatch.Value}";
+
+            return text;
         }
     }
 

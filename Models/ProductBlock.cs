@@ -36,6 +36,9 @@ namespace KHSX.Models
         [ObservableProperty]
         private bool isExceedingDeadline; // Đánh dấu khối này có vượt qua deadline không
 
+        [ObservableProperty]
+        private bool isCapacityOverflow; // Đánh dấu phần phút vượt capacity trong cùng cell
+
         // Dùng để identify block này khi kéo thả
         public Guid Id { get; set; } = Guid.NewGuid();
 
@@ -64,6 +67,8 @@ namespace KHSX.Models
             FunctionName = data.FunctionName ?? string.Empty;
             TotalMinutesRequired = data.TotalMinutesRequired;
             AllocatedMinutes = data.AllocatedMinutes;
+            IsCapacityOverflow = data.IsCapacityOverflow;
+            IsExceedingDeadline = data.IsCapacityOverflow;
             
             if (!string.IsNullOrEmpty(data.DisplayColorHex))
             {
@@ -97,12 +102,20 @@ namespace KHSX.Models
         {
             get
             {
+                if (IsCapacityOverflow)
+                {
+                    return $"{Code}\n" +
+                           $"Phút: {AllocatedMinutes:0.##}\n" +
+                           $"⚠️ VƯỢT CAPACITY\n" +
+                           $"Phần này vượt công suất của cell hiện tại.";
+                }
+
                 if (IsExceedingDeadline)
                 {
                     return $"{Code}\n" +
                            $"Phút: {AllocatedMinutes:0.##}\n" +
                            $"⚠️ VƯỢT DEADLINE\n" +
-                           $"💡 Kéo BuildGroup này sang line khác để điều phối.\n" +
+                           $"💡 Kéo BuildGroup này sang cell khác để điều phối.\n" +
                            $"   Chỉ phần vượt deadline sẽ được di chuyển.";
                 }
                 return $"{Code}\n" +
@@ -147,6 +160,11 @@ namespace KHSX.Models
             OnPropertyChanged(nameof(TooltipText));
         }
 
+        partial void OnIsCapacityOverflowChanged(bool value)
+        {
+            OnPropertyChanged(nameof(TooltipText));
+        }
+
         partial void OnFunctionNameChanged(string value)
         {
             OnPropertyChanged(nameof(DisplayText));
@@ -168,7 +186,8 @@ namespace KHSX.Models
                 FunctionName = this.FunctionName,
                 TotalMinutesRequired = this.TotalMinutesRequired,
                 AllocatedMinutes = Math.Round(minutesToSplit, 2),
-                DisplayColor = this.DisplayColor
+                DisplayColor = this.DisplayColor,
+                IsCapacityOverflow = this.IsCapacityOverflow
             };
         }
     }

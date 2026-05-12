@@ -19,6 +19,8 @@ namespace KHSX.ViewModels
         private readonly ConfigurationService _configService;
         private List<DeadlineData> _customDeadlines = new();
         private bool _isLoading = false;
+        private bool _isBatchingCapacityWarnings = false;
+        private readonly List<string> _capacityWarnings = new();
 
         [ObservableProperty]
         private ObservableCollection<ProductBlock> unassignedBlocks = new ObservableCollection<ProductBlock>();
@@ -217,26 +219,109 @@ namespace KHSX.ViewModels
         }
 
         [RelayCommand]
+        private void ImportModuleList()
+        {
+            var dialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Filter = "Excel Files|*.xls;*.xlsx;*.xlsm;*.xlsb",
+                Title = "Chọn file Module List"
+            };
+
+            if (dialog.ShowDialog() != true) return;
+
+            try
+            {
+                var result = _excelService.ImportModuleList(dialog.FileName);
+                var message = $"Import Module List thành công: {result.ImportedCount} dòng mapping.";
+                if (result.HasWarnings)
+                    message += "\n\nCảnh báo:\n" + string.Join("\n", result.Warnings);
+                MessageBox.Show(message, "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Lỗi khi import Module List: {ex.Message}", "Lỗi Import", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        [RelayCommand]
+        private void ImportPlanning()
+        {
+            var dialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Filter = "Excel Files|*.xls;*.xlsx;*.xlsm;*.xlsb",
+                Title = "Chọn file Planning"
+            };
+
+            if (dialog.ShowDialog() != true) return;
+
+            try
+            {
+                var result = ImportPlanningWithMissingFpRetry(dialog.FileName);
+                if (result == null) return;
+
+                MessageBox.Show($"Import Planning thành công: {result.ImportedCount} block theo BuildGroup + Gr.xxx.",
+                    "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Lỗi khi import Planning: {ex.Message}", "Lỗi Import", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private ImportResult? ImportPlanningWithMissingFpRetry(string fileName)
+        {
+            var result = _excelService.ImportPlanning(fileName);
+            if (!result.HasMissingFps) return result;
+
+            var manualMappings = RequestMissingFpMappingsDialog?.Invoke(result.MissingFps);
+            if (manualMappings == null || manualMappings.Count == 0) return null;
+
+            _excelService.SaveManualMappings(manualMappings);
+            var retry = _excelService.ImportPlanning(fileName);
+            if (!retry.HasMissingFps) return retry;
+
+            MessageBox.Show("Vẫn còn FP chưa có mapping: " + string.Join(", ", retry.MissingFps),
+                "Thiếu Mapping", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return null;
+        }
+
+        private ImportResult? ImportMesWithMissingFpRetry(string fileName)
+        {
+            var result = _excelService.ImportMES(fileName);
+            if (!result.HasMissingFps) return result;
+
+            var manualMappings = RequestMissingFpMappingsDialog?.Invoke(result.MissingFps);
+            if (manualMappings == null || manualMappings.Count == 0) return null;
+
+            _excelService.SaveManualMappings(manualMappings);
+            var retry = _excelService.ImportMES(fileName);
+            if (!retry.HasMissingFps) return retry;
+
+            MessageBox.Show("Vẫn còn FP chưa có mapping: " + string.Join(", ", retry.MissingFps),
+                "Thiếu Mapping", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return null;
+        }
+
+        [RelayCommand]
         private void ImportMarketing()
         {
             var dialog = new Microsoft.Win32.OpenFileDialog
             {
-                Filter = "Excel Files|*.xls;*.xlsx;*.xlsm",
-                Title = "Chọn file dữ liệu Marketing (chứa Gr.xxx và Sản phẩm)"
+                Filter = "Excel Files|*.xls;*.xlsx;*.xlsm;*.xlsb",
+                Title = "Chọn file Planning"
             };
 
             if (dialog.ShowDialog() == true)
             {
                 try
                 {
-                    _excelService.ImportMarketing(dialog.FileName);
-                    RefreshBlocksMetadata();
-                    SaveConfiguration();
-                    MessageBox.Show("Nhập dữ liệu Marketing thành công!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
+                    var result = ImportPlanningWithMissingFpRetry(dialog.FileName);
+                    if (result == null) return;
+                    MessageBox.Show($"Import Planning thành công: {result.ImportedCount} block theo BuildGroup + Gr.xxx.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Lỗi khi import file Marketing: {ex.Message}", "Lỗi Import", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show($"Lỗi khi import Planning: {ex.Message}", "Lỗi Import", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
         }
@@ -246,161 +331,38 @@ namespace KHSX.ViewModels
         {
             var dialog = new Microsoft.Win32.OpenFileDialog
             {
-                Filter = "Excel Files|*.xls;*.xlsx;*.xlsm",
-                Title = "Chọn file dữ liệu MES (chứa Open Minutes)"
+                Filter = "Excel Files|*.xls;*.xlsx;*.xlsm;*.xlsb",
+                Title = "Chọn file MES/OpenMin"
             };
 
             if (dialog.ShowDialog() == true)
             {
                 try
                 {
-                    _excelService.ImportMES(dialog.FileName);
-                    
-                    // Lấy ra các block mới từ dữ liệu MES vừa import
-                    var newBlocks = _excelService.GenerateBlocksFromData();
+                    var importResult = ImportMesWithMissingFpRetry(dialog.FileName);
+                    if (importResult == null) return;
 
-                    // --- BẮT ĐẦU FIX: DỌN DẸP CÁC SẢN PHẨM ĐÃ LÀM XONG (SỐ PHÚT = 0) ---
-                    var activeCodes = new HashSet<string>(newBlocks.Select(b => b.Code));
-
-                    // 1. Quét phần Chưa gán (Unassigned)
-                    var obsoleteUnassigned = UnassignedBlocks.Where(b => !activeCodes.Contains(b.Code)).ToList();
-                    foreach (var obsolete in obsoleteUnassigned)
+                    var generation = _excelService.GenerateBlocksFromDataV2();
+                    if (generation.MissingDeadlineGroups.Count > 0)
                     {
-                        UnassignedBlocks.Remove(obsolete);
+                        MessageBox.Show(
+                            "Thiếu deadline cho Gr.xxx sau, vui lòng cấu hình đủ trước khi auto schedule:\n" +
+                            string.Join(", ", generation.MissingDeadlineGroups),
+                            "Thiếu Deadline",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Warning);
+                        RequestDeadlineDialog?.Invoke();
+                        return;
                     }
 
-                    // 2. Quét trên Lịch (Grid/Rows)
-                    var rowsToRepackForRemoval = new HashSet<ShiftRow>();
-                    foreach (var row in Rows)
-                    {
-                        bool rowModified = false;
-                        foreach (var day in row.Days)
-                        {
-                            var obsoleteSplits = day.Blocks.Where(b => !activeCodes.Contains(b.Code)).ToList();
-                            foreach (var split in obsoleteSplits)
-                            {
-                                day.Blocks.Remove(split);
-                                rowModified = true;
-                            }
-                        }
-                        if (rowModified) 
-                        {
-                            rowsToRepackForRemoval.Add(row);
-                        }
-                    }
+                    AutoScheduleBlocks(generation.Blocks);
 
-                    // 3. Đóng gói lại (dồn về bên trái) những hàng vừa bị xoá mất mảnh ghép
-                    foreach (var row in rowsToRepackForRemoval)
-                    {
-                        RepackRowBlocks(row);
-                    }
-                    // --- KẾT THÚC FIX DỌN DẸP ---
+                    var message = $"Đã import MES/OpenMin và auto schedule {generation.Blocks.Count} block.";
+                    if (generation.Warnings.Count > 0)
+                        message += "\n\nCảnh báo:\n" + string.Join("\n", generation.Warnings);
 
-                    // 1. Cập nhật các Block MỚI và CŨ chưa gán
-                    foreach (var newBlock in newBlocks)
-                    {
-                        var unassignedMatch = UnassignedBlocks.FirstOrDefault(b => b.Code == newBlock.Code);
-                        if (unassignedMatch != null)
-                        {
-                            // Đã có trong unassigned -> chỉ cập nhật lại số phút
-                            unassignedMatch.TotalMinutesRequired = newBlock.TotalMinutesRequired;
-                            unassignedMatch.AllocatedMinutes = newBlock.AllocatedMinutes;
-                        }
-                        else
-                        {
-                            // Kiểm tra xem block có nằm trên Grid không (tìm theo Code)
-                            double allocatedOnGrid = 0;
-                            List<ProductBlock> splitsOnGrid = new List<ProductBlock>();
-                            
-                            foreach (var r in Rows)
-                            {
-                                foreach (var d in r.Days)
-                                {
-                                    foreach (var b in d.Blocks)
-                                    {
-                                        if (b.Code == newBlock.Code)
-                                        {
-                                            allocatedOnGrid += b.AllocatedMinutes;
-                                            splitsOnGrid.Add(b);
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            if (splitsOnGrid.Any())
-                            {
-                                // Block đã nằm trên grid
-                                double minuteDiff = newBlock.TotalMinutesRequired - allocatedOnGrid;
-                                
-                                if (Math.Abs(minuteDiff) > 0.01) // Sản lượng thay đổi (Tăng hoặc Giảm)
-                                {
-                                    // Lấy tất cả các line chứa block này (để repack sau)
-                                    var affectedRows = splitsOnGrid
-                                        .SelectMany(b => Rows.Where(row => row.Days.Any(day => day.Blocks.Contains(b))))
-                                        .Distinct()
-                                        .ToList();
-
-                                    var splitInfos = splitsOnGrid
-                                        .SelectMany(b => Rows.SelectMany(row => row.Days.Where(day => day.Blocks.Contains(b)).Select(day => new { Block = b, Day = day, Row = row })))
-                                        .OrderBy(x => x.Day.Date)
-                                        .ToList();
-
-                                    if (splitInfos.Any())
-                                    {
-                                        // Cập nhật TotalMinutesRequired cho tất cả các mảnh hiện có
-                                        foreach (var info in splitInfos)
-                                        {
-                                            info.Block.TotalMinutesRequired = newBlock.TotalMinutesRequired;
-                                        }
-
-                                        if (minuteDiff > 0)
-                                        {
-                                            // Tăng sản lượng (Hướng 2): Cộng dồn toàn bộ vào mảnh cuối cùng (trễ nhất)
-                                            var lastSplit = splitInfos.Last();
-                                            lastSplit.Block.AllocatedMinutes += minuteDiff;
-                                        }
-                                        else
-                                        {
-                                            // Giảm sản lượng: Trừ lùi từ mảnh cuối cùng trở về trước
-                                            double remainingToSubtract = Math.Abs(minuteDiff);
-                                            for (int i = splitInfos.Count - 1; i >= 0; i--)
-                                            {
-                                                if (remainingToSubtract <= 0.01) break;
-                                                
-                                                var info = splitInfos[i];
-                                                if (info.Block.AllocatedMinutes > remainingToSubtract)
-                                                {
-                                                    info.Block.AllocatedMinutes -= remainingToSubtract;
-                                                    remainingToSubtract = 0;
-                                                }
-                                                else
-                                                {
-                                                    remainingToSubtract -= info.Block.AllocatedMinutes;
-                                                    info.Day.Blocks.Remove(info.Block); // Xoá hẳn mảnh này khỏi lưới
-                                                    info.Block.AllocatedMinutes = 0;
-                                                }
-                                            }
-                                        }
-
-                                        // Gọi dồn dòng cho các line bị ảnh hưởng.
-                                        // RepackRowBlocks sẽ đọc các Block CÒN LẠI mượt mà từ trái qua phải, nhờ đó giữ nguyên trật tự của Sp1 với Sp2.
-                                        foreach (var affectedRow in affectedRows)
-                                        {
-                                            RepackRowBlocks(affectedRow);
-                                        }
-                                    }
-                                }
-                            }
-                            else
-                            {
-                                // Block hoàn toàn mới chưa từng xuất hiện trên Grid lẫn Unassigned
-                                UnassignedBlocks.Add(newBlock);
-                            }
-                        }
-                    }
-                    
-                    MessageBox.Show($"Đã cập nhật/tạo thành công dữ liệu từ hệ thống MES!", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
-                    SaveConfiguration(); // Lưu kết quả thay đổi ngay
+                    MessageBox.Show(message, "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
+                    SaveConfiguration();
 
                 }
                 catch (Exception ex)
@@ -490,7 +452,8 @@ namespace KHSX.ViewModels
         {
             if (!string.IsNullOrEmpty(block.ProductionGroup))
             {
-                var dl = _customDeadlines.FirstOrDefault(d => d.GroupNumber == block.ProductionGroup);
+                var dl = _customDeadlines.FirstOrDefault(d => 
+                    string.Equals(d.GroupNumber, block.ProductionGroup, StringComparison.OrdinalIgnoreCase));
                 if (dl != null)
                 {
                     return dl.Deadline.Date;
@@ -502,8 +465,349 @@ namespace KHSX.ViewModels
 
         public event Action? RequestDeadlineDialog;
         public event Action? RequestConfigGroupsDialog;
+        public event Func<List<string>, List<ModuleMappingData>?>? RequestMissingFpMappingsDialog;
         public event Action? RequestProductOrderSettingsDialog;
         public event Func<Dictionary<string, List<string>>?, Dictionary<string, List<string>>?>? RequestExportOrderDialog;
+
+        private void AutoScheduleBlocks(List<ProductBlock> blocks)
+        {
+            LoadCustomDeadlines();
+            EnsureFunctionRows(blocks);
+
+            UnassignedBlocks.Clear();
+            foreach (var row in Rows)
+                foreach (var day in row.Days)
+                    day.Blocks.Clear();
+
+            var settings = JsonStorage.Load<List<BuildGroupShiftSettingData>>("buildGroupSettings.json")
+                .Where(s => !string.IsNullOrWhiteSpace(s.BuildGroup))
+                .ToDictionary(s => s.BuildGroup, s => s, StringComparer.OrdinalIgnoreCase);
+            foreach (var block in blocks
+                .OrderBy(b => GetDeadlineForBlock(b))
+                .ThenBy(b => b.ProductionGroup)
+                .ThenBy(b => b.Code))
+            {
+                if (!settings.TryGetValue(block.Code, out var setting))
+                {
+                    setting = new BuildGroupShiftSettingData
+                    {
+                        BuildGroup = block.Code,
+                        FunctionName = block.FunctionName,
+                        UseShiftA = true,
+                        UseShiftB = false,
+                        WorkersA = 1,
+                        WorkersB = 1
+                    };
+                }
+
+                var functionName = string.IsNullOrWhiteSpace(setting.FunctionName) ? block.FunctionName : setting.FunctionName;
+                if (string.IsNullOrWhiteSpace(functionName)) functionName = block.Code;
+
+                ScheduleWholeBlockOnDeadline(block, setting);
+            }
+
+            NormalizeVisibleRows();
+
+            foreach (var row in Rows)
+                foreach (var day in row.Days)
+                    CheckBlockExceeding(day);
+
+            UpdateDaySummaries();
+            UpdateLineDeadlines();
+        }
+
+        private void EnsureFunctionRows(List<ProductBlock> blocks)
+        {
+            var settings = JsonStorage.Load<List<BuildGroupShiftSettingData>>("buildGroupSettings.json")
+                .Where(s => !string.IsNullOrWhiteSpace(s.BuildGroup))
+                .ToDictionary(s => s.BuildGroup, s => s, StringComparer.OrdinalIgnoreCase);
+
+            var required = blocks
+                .Select(b =>
+                {
+                    settings.TryGetValue(b.Code, out var setting);
+                    var functionName = setting?.FunctionName ?? b.FunctionName;
+                    var useA = setting?.UseShiftA ?? true;
+                    var useB = setting?.UseShiftB ?? false;
+                    if (!useA && !useB) useA = true;
+
+                    return new
+                    {
+                        FunctionName = string.IsNullOrWhiteSpace(functionName) ? b.Code : functionName,
+                        UseShiftA = useA,
+                        UseShiftB = useB,
+                        WorkersA = setting?.WorkersA ?? 1,
+                        WorkersB = setting?.WorkersB ?? 1
+                    };
+                })
+                .GroupBy(x => x.FunctionName, StringComparer.OrdinalIgnoreCase)
+                .Select(g => new
+                {
+                    FunctionName = g.First().FunctionName,
+                    UseShiftA = g.Any(x => x.UseShiftA),
+                    UseShiftB = g.Any(x => x.UseShiftB),
+                    WorkersA = g.Where(x => x.UseShiftA).Select(x => x.WorkersA).DefaultIfEmpty(1).Max(),
+                    WorkersB = g.Where(x => x.UseShiftB).Select(x => x.WorkersB).DefaultIfEmpty(1).Max()
+                })
+                .OrderBy(x => x.FunctionName)
+                .ToList();
+
+            Rows.Clear();
+            int displayIndex = 1;
+            foreach (var item in required)
+            {
+                var functionName = item.FunctionName;
+                var useA = item.UseShiftA;
+                var useB = item.UseShiftB;
+                if (!useA && !useB) useA = true;
+
+                if (useA)
+                    Rows.Add(CreateFunctionRow(functionName, "A", displayIndex, item.WorkersA));
+                if (useB)
+                    Rows.Add(CreateFunctionRow(functionName, "B", displayIndex, item.WorkersB));
+                displayIndex++;
+            }
+        }
+
+        private ShiftRow CreateFunctionRow(string functionName, string shiftName, int displayIndex, double workers)
+        {
+            var row = new ShiftRow(functionName, shiftName) { DisplayIndex = displayIndex.ToString() };
+            row.DefaultConfig.Workers = workers > 0 ? workers : 1;
+            row.DefaultConfig.Minutes = 480;
+            row.DefaultConfig.Efficiency = 1.15;
+
+            for (int d = 0; d < 30; d++)
+            {
+                var day = new DayCell(StartDate.AddDays(d));
+                day.Config.Workers = row.DefaultConfig.Workers;
+                day.Config.Minutes = row.DefaultConfig.Minutes;
+                day.Config.Efficiency = row.DefaultConfig.Efficiency;
+                day.HasCustomConfig = false;
+                row.Days.Add(day);
+            }
+
+            return row;
+        }
+
+        private ShiftRow ChooseTargetRow(ProductBlock block, BuildGroupShiftSettingData setting, DateTime targetDate)
+        {
+            var functionName = string.IsNullOrWhiteSpace(setting.FunctionName) ? block.FunctionName : setting.FunctionName;
+            var rowA = Rows.FirstOrDefault(r =>
+                string.Equals(r.ParentLineName, functionName, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(r.ShiftName, "A", StringComparison.OrdinalIgnoreCase));
+            var rowB = Rows.FirstOrDefault(r =>
+                string.Equals(r.ParentLineName, functionName, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(r.ShiftName, "B", StringComparison.OrdinalIgnoreCase));
+
+            if (setting.UseShiftA && !setting.UseShiftB) return rowA ?? rowB ?? Rows.First();
+            if (!setting.UseShiftA && setting.UseShiftB) return rowB ?? rowA ?? Rows.First();
+
+            if (rowA == null) return rowB ?? Rows.First();
+            if (rowB == null) return rowA;
+
+            var dayA = EnsureDateExists(rowA, targetDate);
+            return dayA.TotalUsed + block.AllocatedMinutes <= dayA.TotalCapacity
+                ? rowA
+                : rowB;
+        }
+
+        private DateTime ScheduleBlockByCapacity(ProductBlock block, BuildGroupShiftSettingData setting, DateTime startDate)
+        {
+            var rows = GetSchedulableRows(block, setting);
+            if (rows.Count == 0) return startDate;
+
+            var remaining = Math.Round(block.AllocatedMinutes, 2);
+            var currentDate = startDate.Date;
+            var guardDays = 0;
+
+            while (remaining > 0.01 && guardDays < 3650)
+            {
+                DayCell? lastWorkDay = null;
+
+                foreach (var row in rows)
+                {
+                    var day = EnsureDateExists(row, currentDate);
+                    if (day.IsDayOff) continue;
+
+                    lastWorkDay = day;
+                    var available = Math.Round(day.AvailableMinutes, 2);
+                    if (available <= 0.01) continue;
+
+                    var minutes = Math.Min(remaining, available);
+                    day.Blocks.Add(block.CloneWithSplit(minutes));
+                    remaining = Math.Round(remaining - minutes, 2);
+
+                    if (remaining <= 0.01) break;
+                }
+
+                if (remaining <= 0.01)
+                    return currentDate;
+
+                currentDate = currentDate.AddDays(1);
+                guardDays++;
+            }
+
+            if (remaining > 0.01)
+            {
+                UnassignedBlocks.Add(block.CloneWithSplit(remaining));
+            }
+
+            return currentDate;
+        }
+
+        private DateTime ScheduleWholeBlockOnDeadline(ProductBlock block, BuildGroupShiftSettingData setting)
+        {
+            var targetDate = GetDeadlineForBlock(block);
+            if (targetDate == DateTime.MaxValue)
+                targetDate = StartDate.Date;
+
+            var targetRow = ChooseTargetRow(block, setting, targetDate);
+            var targetDay = EnsureDateExists(targetRow, targetDate);
+            var scheduledBlock = block.CloneWithSplit(block.AllocatedMinutes);
+            scheduledBlock.IsCapacityOverflow = targetDay.TotalUsed + scheduledBlock.AllocatedMinutes > targetDay.TotalCapacity + 0.01;
+            scheduledBlock.IsExceedingDeadline = targetDay.Date.Date > GetDeadlineForBlock(scheduledBlock);
+
+            targetDay.Blocks.Add(scheduledBlock);
+            CheckBlockExceeding(targetDay);
+            return targetDate;
+        }
+
+        private List<ShiftRow> GetSchedulableRows(ProductBlock block, BuildGroupShiftSettingData setting)
+        {
+            var functionName = string.IsNullOrWhiteSpace(setting.FunctionName) ? block.FunctionName : setting.FunctionName;
+            var functionRows = Rows
+                .Where(r => string.Equals(r.ParentLineName, functionName, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(r => r.ShiftName)
+                .ToList();
+
+            if (functionRows.Count > 1)
+                return functionRows;
+
+            var useA = setting.UseShiftA;
+            var useB = setting.UseShiftB;
+            if (!useA && !useB) useA = true;
+
+            return functionRows
+                .Where(r => (useA && string.Equals(r.ShiftName, "A", StringComparison.OrdinalIgnoreCase)) ||
+                            (useB && string.Equals(r.ShiftName, "B", StringComparison.OrdinalIgnoreCase)))
+                .OrderBy(r => r.ShiftName)
+                .ToList();
+        }
+
+        private void RemoveRowsWithoutBlocks()
+        {
+            foreach (var row in Rows.Where(r => !r.Days.SelectMany(d => d.Blocks).Any()).ToList())
+            {
+                Rows.Remove(row);
+            }
+        }
+
+        private void NormalizeVisibleRows()
+        {
+            MergeDuplicateRows();
+            RemoveRowsWithoutBlocks();
+        }
+
+        private void MergeDuplicateRows()
+        {
+            var duplicateGroups = Rows
+                .GroupBy(r => $"{r.ParentLineName}|{r.ShiftName}", StringComparer.OrdinalIgnoreCase)
+                .Where(g => g.Count() > 1)
+                .ToList();
+
+            foreach (var group in duplicateGroups)
+            {
+                var target = group.First();
+                foreach (var duplicate in group.Skip(1).ToList())
+                {
+                    foreach (var sourceDay in duplicate.Days)
+                    {
+                        var targetDay = EnsureDateExists(target, sourceDay.Date.Date);
+                        if (sourceDay.HasCustomConfig && !targetDay.HasCustomConfig)
+                        {
+                            targetDay.HasCustomConfig = true;
+                            targetDay.IsDayOff = sourceDay.IsDayOff;
+                            targetDay.Config.Workers = sourceDay.Config.Workers;
+                            targetDay.Config.Minutes = sourceDay.Config.Minutes;
+                            targetDay.Config.Efficiency = sourceDay.Config.Efficiency;
+                        }
+
+                        foreach (var block in sourceDay.Blocks.ToList())
+                        {
+                            targetDay.Blocks.Add(block);
+                            sourceDay.Blocks.Remove(block);
+                        }
+                    }
+
+                    Rows.Remove(duplicate);
+                }
+            }
+        }
+
+        private void BeginCapacityWarningBatch()
+        {
+            _capacityWarnings.Clear();
+            _isBatchingCapacityWarnings = true;
+        }
+
+        private void FlushCapacityWarningBatch()
+        {
+            _isBatchingCapacityWarnings = false;
+            if (_capacityWarnings.Count == 0) return;
+
+            var sb = new StringBuilder();
+            sb.AppendLine("Một số sản phẩm chưa xếp hết do không đủ công suất:");
+            sb.AppendLine();
+            foreach (var warning in _capacityWarnings.Distinct())
+                sb.AppendLine("- " + warning);
+
+            MessageBox.Show(sb.ToString(), "Cảnh báo công suất", MessageBoxButton.OK, MessageBoxImage.Warning);
+            _capacityWarnings.Clear();
+        }
+
+        private void ReportInsufficientCapacity(ProductBlock block, double remainingMinutes)
+        {
+            var message = $"{block.Code} ({block.ProductionGroup}): còn {remainingMinutes:0.##} phút chưa được xếp lịch";
+            if (_isBatchingCapacityWarnings)
+            {
+                _capacityWarnings.Add(message);
+                return;
+            }
+
+            MessageBox.Show($"Line này không đủ công suất cho sản phẩm {block.Code}. Còn thừa {remainingMinutes:0.##} phút chưa được xếp lịch.",
+                          "Cảnh báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+
+        private DayCell EnsureDateExists(ShiftRow row, DateTime date)
+        {
+            var existing = row.Days.FirstOrDefault(d => d.Date.Date == date.Date);
+            if (existing != null) return existing;
+
+            DayCell CreateDay(DateTime dayDate)
+            {
+                var day = new DayCell(dayDate);
+                day.Config.Workers = row.DefaultConfig.Workers;
+                day.Config.Minutes = row.DefaultConfig.Minutes;
+                day.Config.Efficiency = row.DefaultConfig.Efficiency;
+                return day;
+            }
+
+            var minDate = row.Days.Count > 0 ? row.Days.Min(d => d.Date.Date) : StartDate.Date.AddDays(1);
+            while (minDate > date.Date)
+            {
+                minDate = minDate.AddDays(-1);
+                row.Days.Insert(0, CreateDay(minDate));
+            }
+
+            var maxDate = row.Days.Count > 0 ? row.Days.Max(d => d.Date.Date) : StartDate.Date.AddDays(-1);
+            while (maxDate < date.Date)
+            {
+                maxDate = maxDate.AddDays(1);
+                row.Days.Add(CreateDay(maxDate));
+            }
+
+            return row.Days.First(d => d.Date.Date == date.Date);
+        }
 
         public void UpdateDaySummaries()
         {
@@ -585,11 +889,170 @@ namespace KHSX.ViewModels
                 }
             }
 
-            var firstDay = row.Days.First();
+            var cursorDate = row.Days.First().Date.Date;
             foreach (var block in orderedBlocks)
             {
-                AssignBlockRecursively(block, firstDay, row);
+                cursorDate = AssignBlockKeepingOverflowInDay(block, row, cursorDate);
             }
+        }
+
+        public void RepackRowBlocksKeepingOverflowInDay(ShiftRow row, DayCell anchorDay)
+        {
+            if (row == null || anchorDay == null || row.Days.Count == 0) return;
+
+            var orderedBlocks = CollectAndClearRowBlocks(row);
+            var cursorDate = row.Days.First().Date.Date;
+            var anchorDate = anchorDay.Date.Date;
+
+            foreach (var block in orderedBlocks)
+            {
+                cursorDate = AssignBlockWithOverflowAnchor(block, row, cursorDate, anchorDate);
+            }
+        }
+
+        private List<ProductBlock> CollectAndClearRowBlocks(ShiftRow row)
+        {
+            var orderedBlocks = new List<ProductBlock>();
+            var processedIds = new HashSet<Guid>();
+
+            foreach (var day in row.Days)
+            {
+                foreach (var split in day.Blocks.ToList())
+                {
+                    var pid = split.ParentId ?? split.Id;
+                    if (!processedIds.Contains(pid))
+                    {
+                        processedIds.Add(pid);
+                        var totalOnThisRow = Math.Round(row.Days.SelectMany(d => d.Blocks)
+                                                     .Where(b => (b.ParentId ?? b.Id) == pid)
+                                                     .Sum(b => b.AllocatedMinutes), 2);
+
+                        var reconstructed = new ProductBlock
+                        {
+                            Id = Guid.NewGuid(),
+                            ParentId = pid,
+                            SourceId = split.SourceId,
+                            Code = split.Code,
+                            ProductionGroup = split.ProductionGroup,
+                            FunctionName = split.FunctionName,
+                            TotalMinutesRequired = split.TotalMinutesRequired,
+                            AllocatedMinutes = totalOnThisRow,
+                            DisplayColor = split.DisplayColor
+                        };
+
+                        if (totalOnThisRow > 0.01)
+                        {
+                            orderedBlocks.Add(reconstructed);
+                        }
+                    }
+                    day.Blocks.Remove(split);
+                }
+            }
+
+            return orderedBlocks;
+        }
+
+        private DateTime AssignBlockKeepingOverflowInDay(ProductBlock block, ShiftRow row, DateTime startDate)
+        {
+            var remaining = Math.Round(block.AllocatedMinutes, 2);
+            var currentDate = startDate.Date;
+            var guardDays = 0;
+
+            while (remaining > 0.01 && guardDays < 3650)
+            {
+                var day = EnsureDateExists(row, currentDate);
+                if (day.IsDayOff)
+                {
+                    currentDate = currentDate.AddDays(1);
+                    guardDays++;
+                    continue;
+                }
+
+                var available = Math.Round(day.AvailableMinutes, 2);
+                if (available > 0.01)
+                {
+                    var minutes = Math.Round(Math.Min(available, remaining), 2);
+                    var splitBlock = block.CloneWithSplit(minutes);
+                    splitBlock.IsExceedingDeadline = day.Date > GetDeadlineForBlock(splitBlock);
+                    day.Blocks.Add(splitBlock);
+
+                    remaining = Math.Round(remaining - minutes, 2);
+                }
+
+                if (remaining <= 0.01)
+                {
+                    CheckBlockExceeding(day);
+                    return currentDate;
+                }
+
+                currentDate = currentDate.AddDays(1);
+                guardDays++;
+            }
+
+            if (remaining > 0.01)
+            {
+                ReportInsufficientCapacity(block, remaining);
+                UnassignedBlocks.Add(block.CloneWithSplit(remaining));
+            }
+
+            return currentDate;
+        }
+
+        private DateTime AssignBlockWithOverflowAnchor(ProductBlock block, ShiftRow row, DateTime startDate, DateTime anchorDate)
+        {
+            var remaining = Math.Round(block.AllocatedMinutes, 2);
+            var currentDate = startDate.Date;
+            var guardDays = 0;
+
+            while (remaining > 0.01 && guardDays < 3650)
+            {
+                var day = EnsureDateExists(row, currentDate);
+                if (day.IsDayOff)
+                {
+                    currentDate = currentDate.AddDays(1);
+                    guardDays++;
+                    continue;
+                }
+
+                var available = Math.Round(day.AvailableMinutes, 2);
+
+                if (available > 0.01)
+                {
+                    var minutes = Math.Round(Math.Min(available, remaining), 2);
+                    var splitBlock = block.CloneWithSplit(minutes);
+                    splitBlock.IsExceedingDeadline = day.Date > GetDeadlineForBlock(splitBlock);
+                    day.Blocks.Add(splitBlock);
+
+                    remaining = Math.Round(remaining - minutes, 2);
+                }
+
+                if (remaining <= 0.01)
+                {
+                    CheckBlockExceeding(day);
+                    return currentDate;
+                }
+
+                if (currentDate == anchorDate)
+                {
+                    var overflow = block.CloneWithSplit(remaining);
+                    overflow.IsCapacityOverflow = true;
+                    overflow.IsExceedingDeadline = true;
+                    day.Blocks.Add(overflow);
+                    CheckBlockExceeding(day);
+                    return currentDate.AddDays(1);
+                }
+
+                currentDate = currentDate.AddDays(1);
+                guardDays++;
+            }
+
+            if (remaining > 0.01)
+            {
+                ReportInsufficientCapacity(block, remaining);
+                UnassignedBlocks.Add(block.CloneWithSplit(remaining));
+            }
+
+            return currentDate;
         }
 
         public void RepackAll()
@@ -627,6 +1090,14 @@ namespace KHSX.ViewModels
         }
 
         [RelayCommand]
+        private void Load()
+        {
+            LoadConfiguration();
+            SaveConfiguration();
+            MessageBox.Show("Đã load lại dữ liệu và tính lại lịch.", "Thông báo", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        [RelayCommand]
         private void SaveConfiguration()
         {
             try
@@ -648,6 +1119,7 @@ namespace KHSX.ViewModels
                     FunctionName = b.FunctionName,
                     TotalMinutesRequired = b.TotalMinutesRequired,
                     AllocatedMinutes = b.AllocatedMinutes,
+                    IsCapacityOverflow = b.IsCapacityOverflow,
                     DisplayColorHex = b.DisplayColorHex
                 }).ToList();
                 JsonStorage.Save("blocks.json", unassignedList);
@@ -674,6 +1146,7 @@ namespace KHSX.ViewModels
                                     FunctionName = block.FunctionName,
                                     TotalMinutesRequired = block.TotalMinutesRequired,
                                     AllocatedMinutes = block.AllocatedMinutes,
+                                    IsCapacityOverflow = block.IsCapacityOverflow,
                                     DisplayColorHex = block.DisplayColorHex
                                 }
                             });
@@ -740,11 +1213,14 @@ namespace KHSX.ViewModels
 
                 // Tái phân bổ blocks theo trạng thái IsDayOff hiện tại
                 // (ví dụ: ngày nghỉ đã được bỏ → blocks cần dịch về ngày sớm hơn)
+                BeginCapacityWarningBatch();
                 RepackAll();
+                NormalizeVisibleRows();
 
                 // Cập nhật giao diện và tính toán deadline ngay sau khi nạp xong dữ liệu
                 UpdateDaySummaries();
                 UpdateLineDeadlines();
+                FlushCapacityWarningBatch();
             }
             catch (Exception ex)
             {
@@ -752,6 +1228,7 @@ namespace KHSX.ViewModels
             }
             finally
             {
+                _isBatchingCapacityWarnings = false;
                 _isLoading = false; // Tắt cờ isLoading
             }
         }
@@ -1031,6 +1508,26 @@ namespace KHSX.ViewModels
             }
 
             // Lưu lại thông tin lưới sau khi kéo thả thành công
+            SaveConfiguration();
+        }
+
+        public void HandleDropCellGroup(DayCell sourceDay, DayCell targetDay, ShiftRow targetRow)
+        {
+            if (sourceDay == null || targetDay == null || targetRow == null || sourceDay == targetDay)
+                return;
+
+            var sourceRow = Rows.FirstOrDefault(r => r.Days.Contains(sourceDay));
+            var movedBlocks = sourceDay.Blocks.ToList();
+            if (movedBlocks.Count == 0) return;
+
+            sourceDay.Blocks.Clear();
+            foreach (var block in movedBlocks)
+            {
+                targetDay.Blocks.Add(block);
+            }
+
+            if (sourceRow != null) CheckBlockExceeding(sourceDay);
+            CheckBlockExceeding(targetDay);
             SaveConfiguration();
         }
 
@@ -1407,10 +1904,7 @@ namespace KHSX.ViewModels
             // Nếu vòng lặp kết thúc mà vẫn còn dư -> tức là tràn đến ngày cuối cùng, ta cho hiển thị cảnh báo
             if (remainingMin > 0.01)
             {
-                // Để biểu diễn số phút còn dư chưa gán được, ta trả lại vào Unassigned? 
-                // Hoặc báo lỗi.
-                MessageBox.Show($"Line này không đủ công suất cho sản phẩm {block.Code}. Còn thừa {remainingMin:0.##} phút chưa được xếp lịch.", 
-                              "Cảnh báo", MessageBoxButton.OK, MessageBoxImage.Warning);
+                ReportInsufficientCapacity(block, remainingMin);
                 
                 var unassignedPortion = block.CloneWithSplit(remainingMin);
                 UnassignedBlocks.Add(unassignedPortion);
@@ -1419,9 +1913,11 @@ namespace KHSX.ViewModels
 
         private void CheckBlockExceeding(DayCell day)
         {
+            bool isOverCapacity = day.TotalUsed > day.TotalCapacity + 0.01;
+            day.IsOverCapacity = isOverCapacity;
             foreach (var block in day.Blocks)
             {
-                block.IsExceedingDeadline = day.Date > GetDeadlineForBlock(block);
+                block.IsExceedingDeadline = block.IsCapacityOverflow || day.Date > GetDeadlineForBlock(block);
             }
         }
 

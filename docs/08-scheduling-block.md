@@ -1,26 +1,22 @@
 # Scheduling Block
 
-Mỗi ProductGroup sẽ trở thành một block sản xuất.
+Mỗi block đại diện cho một cặp `BuildGroup + Gr.xxx`.
 
-Độ dài block = tổng số phút cần sản xuất (open minutes từ MES, gom theo ProductGroup).
+Ví dụ:
 
-Block có thể kéo thả vào các line sản xuất.
+- `BM8R220 / Gr.285`
+- `BM8R220 / Gr.286`
 
-Hệ thống sẽ kiểm tra:
+Hai block này tách riêng dù cùng BuildGroup.
 
-- công suất line (workers × minutes × efficiency)
-- deadline của group (theo Gr.xxx mà ProductGroup đã đến)
+## Nguồn Số Phút
 
-Nếu không đủ công suất trên line/ca hiện tại thì **người dùng quan sát và tự kéo block sang line khác** (thao tác thủ công); hệ thống không tự động chuyển line.
+- Có MES/OpenMin: dùng open minutes từ MES.
+- Không có MES nhưng planning có: dùng planned minutes từ planning.
+- MES có nhưng planning không có: vẫn tạo block, đồng thời cảnh báo.
 
-## Quy tắc kéo thả
+## Vị Trí Tự Động
 
-- **Kéo toàn bộ block** — không kéo một nửa. **Phần vượt deadline:** thiết kế sao cho khi user **click và kéo phần sau deadline** thì chỉ phần đó di chuyển, **không** kéo phần phía trước deadline đi theo (phần trước deadline giữ nguyên vị trí).
-- **Thứ tự trong cell:** Theo thứ tự user đã kéo — block kéo trước nằm trước, block kéo sau nối tiếp. Auto-push tôn trọng thứ tự này.
-- Block luôn **tự đẩy lên ngày sớm nhất** có capacity (auto-push). Re-render khi có thay đổi.
-- Kéo block ngược về danh sách chờ: block trở lại Unassigned.
-- Xóa hàng (line + shift) có block: **cảnh báo**, các block trên hàng đó trở về danh sách chờ.
+Block được đặt vào cell ngày deadline của `Gr.xxx` trên line Function của BuildGroup.
 
-## Cập nhật MES
-
-- Block đã gán trên line giữ nguyên vị trí. Chỉ cập nhật số phút (tự co lại nếu giảm, tự mở rộng nếu tăng).
+Nếu cell vượt capacity, hệ thống không tự chia nhỏ block mà hiển thị viền đỏ.

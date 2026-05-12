@@ -1,48 +1,48 @@
 # Đặc Tả Import Excel
 
-Hệ thống sử dụng 2 nguồn Excel.
+Hệ thống dùng 3 nguồn Excel theo thứ tự.
 
----
+## 1. Module List
 
-# File Marketing Release
+File `module_list.xlsx` là nguồn mapping chính.
 
-Chứa thông tin sản xuất.
+- Cột A `Part name`: tên Function.
+- Cột B `Buildgroup`: BuildGroup.
+- Cột C `FP`: mã 7 ký tự đầu dùng để match sản phẩm.
 
-Các cột:
+Một BuildGroup chỉ thuộc một Function, nhưng một BuildGroup có thể có nhiều FP.
 
-- **Cột A:** tên sản phẩm (productId)
-- **Cột E–J, hàng 1:** header là tên các Gr.xxx (vd: Gr.284, Gr.285, …; nhà máy làm theo thứ tự và Gr tăng dần 289, 290, …)
-- **Cột E–J, từ hàng 2:** **số lượng sản phẩm** theo từng Gr (không phải số phút). Tổng phút = số lượng × minutesPerProduct.
-- **Cột K:** tên nhóm sản phẩm (ProductGroup)
-- **Cột L:** tên function
-- **Cột M:** minutesPerProduct (số phút/sản phẩm)
+Nếu sản phẩm có FP chưa tồn tại trong module list, hệ thống mở popup để user nhập tay `FP -> BuildGroup -> Function` và lưu lại cho lần sau.
 
-Ví dụ:
+## 2. Planning
 
-- BM8R030110, nhóm BM8R030, Gr.285: 5 cái, minutesPerProduct: 18 → tổng phút Gr.285 = 5 × 18 = 90 phút.
+File planning mới là `planning (1).xlsb`, sheet `Serienplaning`.
 
-**Hệ thống lưu:** số lượng **theo từng Gr.xxx** và **tổng số lượng** cộng dồn tất cả Gr.
+- Cột A: `Sektor`, chỉ lấy `U4`.
+- Cột C: mã sản phẩm đầy đủ.
+- Cột H-L: quantity theo từng `Gr.xxx`; header là tên `Gr.xxx`.
+- Cột M: `Total`, chỉ lấy dòng `Total > 0`.
+- Cột U: phút/sản phẩm, chia `1000`.
 
-**Khi import lại file Marketing (merge):**
-- **Cập nhật cả hai:** số lượng theo từng Gr.xxx (chỉ những Gr có trong file mới) và tổng.
-- Gr.xxx **có trong file mới:** cập nhật số lượng theo Gr đó.
-- Gr.xxx **không có trong file mới:** giữ nguyên (vd: sản phẩm có Gr.284 và Gr.285, file mới chỉ có Gr.285 → Gr.284 giữ nguyên).
-- Sản phẩm **không có trong file mới:** giữ nguyên dữ liệu cũ.
+Cách tính:
 
----
+```text
+FP = 7 ký tự đầu của mã sản phẩm
+BuildGroup/Function = tra FP trong module list
+plannedMinutes = quantity từng Gr.xxx * minutesPerProduct
+```
 
-# File MES
+Dữ liệu được gom theo `BuildGroup + Gr.xxx` và lưu vào `planningBlocks.json`.
 
-Chứa số phút sản xuất còn lại (open minutes).
+## 3. MES / OpenMin
 
-- **Cột D** (từ hàng 20): tên sản phẩm
-- **Cột I** (từ hàng 20): số phút còn lại (open minutes)
+File MES/OpenMin là file import ở bước `Import MES -> Auto Schedule`.
 
-**Lưu ý:** Hàng 1–19 bỏ qua; chỉ đọc dữ liệu từ hàng 20 trở đi.
+- Cột B: `Sektor`, chỉ lấy `U4`.
+- Cột C: `Gr.xxx`.
+- Cột D: mã sản phẩm đầy đủ.
+- Cột I: open minutes, đã là tổng phút.
 
-Ví dụ:
+Dữ liệu được map qua FP giống planning và gom theo `BuildGroup + Gr.xxx`, lưu vào `openMinutes.json`.
 
-BM8R093105
-Open Minutes: 142.92
-
-**Đây là nguồn dữ liệu chính** để xác định tổng số phút cần sản xuất cho mỗi ProductGroup khi lập kế hoạch.
+Nếu MES có block không có trong planning, hệ thống vẫn tạo block và cảnh báo. Nếu planning có block mà MES thiếu, hệ thống dùng planned minutes làm fallback.
